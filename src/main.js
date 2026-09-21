@@ -176,6 +176,9 @@ async function init() {
     return
   }
 
+  // Ask the browser not to delete our stored ROMs and saves when storage is low
+  try { navigator.storage?.persist?.().catch(() => {}) } catch (e) {}
+
   loadStoredGames()
   recentGames = store.getState().recentGames || []
 
@@ -344,82 +347,18 @@ function setupEventListeners() {
 
   backBtn.addEventListener('click', () => { endSession(); stopEmulator(); showLibrary() })
 
-  // Save button - saves to Supabase cloud if logged in, otherwise local
-  saveStateBtn.addEventListener('click', async () => {
-    if (!window.EJS_emulator || !currentGame) {
-      showToast('No game running', 'error')
-      return
-    }
-
-    const { user } = store.getState()
-
-    if (user) {
-      // Save to Supabase cloud using SRAM save file
-      try {
-        showLoading('Saving to cloud...')
-        const saveData = window.EJS_emulator.gameManager.getSaveFile()
-        if (saveData) {
-          const blob = new Blob([saveData], { type: 'application/octet-stream' })
-          await saves.save(user.id, currentGame.gameId, blob)
-          showToast('Saved to cloud!', 'success')
-        } else {
-          // Fall back to local save
-          window.EJS_emulator.gameManager.saveSaveFiles()
-          showToast('State saved locally', 'success')
-        }
-      } catch (error) {
-        console.error('Cloud save error:', error)
-        // Fall back to local save on error
-        window.EJS_emulator.gameManager.saveSaveFiles()
-        showToast('Saved locally (cloud unavailable)', 'warning')
-      } finally {
-        hideLoading()
-      }
-    } else {
-      // Save locally when not logged in
-      window.EJS_emulator.gameManager.saveSaveFiles()
-      showToast('State saved locally', 'success')
-    }
+  // Auto-save the game when the tab is hidden or the app is closed,
+  // so the player can continue next time
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') autoSaveNow()
   })
+  window.addEventListener('pagehide', autoSaveNow)
 
-  // Load button - loads from Supabase cloud if logged in and save exists, otherwise local
-  loadStateBtn.addEventListener('click', async () => {
-    if (!window.EJS_emulator || !currentGame) {
-      showToast('No game running', 'error')
-      return
-    }
+  // Save button - saves the full game state on this device (and in the cloud if logged in)
+  saveStateBtn.addEventListener('click', saveCurrentState)
 
-    const { user } = store.getState()
-
-    if (user) {
-      // Try to load from Supabase cloud (SRAM save file format)
-      try {
-        showLoading('Loading from cloud...')
-        const saveBlob = await saves.load(user.id, currentGame.gameId)
-        if (saveBlob) {
-          const arrayBuffer = await saveBlob.arrayBuffer()
-          // Load the SRAM save file into the emulator
-          window.EJS_emulator.gameManager.loadSaveFiles(arrayBuffer)
-          showToast('Loaded from cloud!', 'success')
-        } else {
-          // No cloud save, try local
-          window.EJS_emulator.gameManager.loadSaveFiles()
-          showToast('Loaded local save (no cloud save found)', 'info')
-        }
-      } catch (error) {
-        console.error('Cloud load error:', error)
-        // Fall back to local load on error
-        window.EJS_emulator.gameManager.loadSaveFiles()
-        showToast('Loaded locally (cloud unavailable)', 'warning')
-      } finally {
-        hideLoading()
-      }
-    } else {
-      // Load locally when not logged in
-      window.EJS_emulator.gameManager.loadSaveFiles()
-      showToast('State loaded', 'success')
-    }
-  })
+  // Load button - loads the saved state from this device (or the cloud if not found locally)
+  loadStateBtn.addEventListener('click', loadCurrentState)
 
   // Cloud button - shows save/load options menu
   if (cloudSaveBtn) {
@@ -436,7 +375,7 @@ function setupEventListeners() {
       }
 
       // Show cloud save options
-      const hasCloudSave = await checkCloudSaveExists(user.id, currentGame.gameId)
+      const hasCloudSave = await checkCloudSaveExists(user.id, cloudKey(currentGame.gameId))
       showCloudSaveMenu(hasCloudSave)
     })
   }
@@ -643,6 +582,21 @@ function handleFile(file) {
   launchEmulator(blobUrl, gameInfo)
 }
 
+// Wait until the emulator core is loaded and the game is running
+async function waitForEmulatorReady(timeout = 30000) {
+  const start = Date.now()
+  while (Date.now() - start < timeout) {
+    const emu = window.EJS_emulator
+    if (emu && emu.gameManager && typeof emu.gameManager.loadState === 'function') {
+      // small extra delay so the first frames are running
+      await new Promise(r => setTimeout(r, 800))
+      return true
+    }
+    await new Promise(r => setTimeout(r, 500))
+  }
+  return false
+}
+
 async function launchEmulator(romUrl, gameInfo) {
   // Check for auto-resume state
   const resumeState = getAutoResumeState(gameInfo.gameId)
@@ -681,6 +635,7 @@ async function launchEmulator(romUrl, gameInfo) {
   window.EJS_player = '#game'
   window.EJS_core = selectedSystem.core
   window.EJS_gameUrl = romUrl
+  window.EJS_gameName = gameInfo.gameId
   window.EJS_pathtodata = 'https://cdn.emulatorjs.org/stable/data/'
   window.EJS_startOnLoaded = true
   window.EJS_DEBUG_XX = false
@@ -696,23 +651,21 @@ async function launchEmulator(romUrl, gameInfo) {
     // Apply any saved cheats
     setTimeout(() => applyAllCheats(gameInfo.gameId), 1000)
 
-    // Load auto-resume state if user chose to continue
-    if (shouldResume && resumeState?.stateData) {
-      setTimeout(() => {
+    // Restore the auto-saved state if user chose to continue
+    if (shouldResume) {
+      (async () => {
         try {
-          const binary = atob(resumeState.stateData)
-          const bytes = new Uint8Array(binary.length)
-          for (let i = 0; i < binary.length; i++) {
-            bytes[i] = binary.charCodeAt(i)
-          }
-          if (window.EJS_emulator?.gameManager?.loadSaveFiles) {
-            window.EJS_emulator.gameManager.loadSaveFiles(bytes.buffer)
+          const ready = await waitForEmulatorReady()
+          if (!ready || !currentGame || currentGame.gameId !== gameInfo.gameId) return
+          const bytes = await getStateData(autoKey(gameInfo.gameId))
+          if (bytes) {
+            window.EJS_emulator.gameManager.loadState(bytes)
             showToast('Game resumed!', 'success')
           }
         } catch (e) {
           console.log('Could not restore auto-resume state:', e)
         }
-      }, 1500)
+      })()
     }
   }
   script.onerror = () => { hideLoading(); showToast('Failed to load emulator', 'error'); showLibrary() }
@@ -720,19 +673,8 @@ async function launchEmulator(romUrl, gameInfo) {
 }
 
 async function endSession() {
-  // Save auto-resume state before ending
-  if (currentGame && window.EJS_emulator) {
-    try {
-      const saveData = window.EJS_emulator.gameManager.getSaveFile()
-      if (saveData) {
-        // Convert to base64 for storage
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(saveData)))
-        saveAutoResumeState(currentGame.gameId, currentGame.name, currentGame.systemId, base64)
-      }
-    } catch (e) {
-      console.log('Could not save auto-resume state:', e)
-    }
-  }
+  // Save the game state before ending (runs synchronously before the emulator is stopped)
+  autoSaveNow()
 
   // Always update local play stats
   if (currentGame && sessionStartTime) {
@@ -793,7 +735,10 @@ function showLibrary() {
 }
 
 async function saveGameToRecent(gameInfo, file) {
-  storeGameFile(gameInfo.fileName, file)
+  // Store the ROM file itself on this device (IndexedDB)
+  const stored = await storeGameFile(gameInfo.fileName, file)
+  if (!stored) showToast('Could not store the game file on this device', 'warning')
+
   recentGames = recentGames.filter(g => g.fileName !== gameInfo.fileName)
   recentGames.unshift(gameInfo)
   recentGames = recentGames.slice(0, 20)
@@ -904,8 +849,8 @@ async function playRecentGame(index) {
     updateRecentGames(recentGames)
     launchEmulator(URL.createObjectURL(file), game)
   } else {
-    showToast('Game file not found. Please upload again.', 'error')
-    deleteGame(index)
+    // Do not delete the game from the list - just ask the user to upload the file again
+    showToast('Game file not found on this device. Please upload it again.', 'error')
   }
 }
 
@@ -920,7 +865,9 @@ function deleteGame(index) {
   showToast('Game removed', 'success')
 }
 
-// IndexedDB helpers
+// ============================================
+// IndexedDB: ROM files
+// ============================================
 const DB_NAME = 'retroplay_games', STORE_NAME = 'files'
 
 function openDB() {
@@ -937,11 +884,22 @@ function openDB() {
 
 async function storeGameFile(name, file) {
   try {
+    // IMPORTANT: read the file BEFORE opening the transaction.
+    // An IndexedDB transaction closes itself while we wait for other async work,
+    // which used to make the ROM silently fail to save.
+    const data = await file.arrayBuffer()
     const db = await openDB()
-    const tx = db.transaction(STORE_NAME, 'readwrite')
-    tx.objectStore(STORE_NAME).put({ name, data: await file.arrayBuffer(), type: file.type })
-    return new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error) })
-  } catch (e) { console.error('Failed to store game file:', e) }
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite')
+      tx.objectStore(STORE_NAME).put({ name, data, type: file.type })
+      tx.oncomplete = () => resolve(true)
+      tx.onerror = () => reject(tx.error)
+      tx.onabort = () => reject(tx.error)
+    })
+  } catch (e) {
+    console.error('Failed to store game file:', e)
+    return false
+  }
 }
 
 async function getGameFile(name) {
@@ -959,6 +917,152 @@ async function getGameFile(name) {
 async function deleteGameFile(name) {
   try { const db = await openDB(); db.transaction(STORE_NAME, 'readwrite').objectStore(STORE_NAME).delete(name) }
   catch (e) { console.error('Failed to delete game file:', e) }
+}
+
+// ============================================
+// IndexedDB: save states (game progress)
+// ============================================
+const STATE_DB_NAME = 'retroplay_states', STATE_STORE = 'states'
+
+const stateKey = (gameId) => `state:${gameId}`   // manual save (Save button)
+const autoKey = (gameId) => `auto:${gameId}`     // automatic save (resume)
+const cloudKey = (gameId) => `${gameId}__state`  // id used for the cloud copy
+
+function openStateDB() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(STATE_DB_NAME, 1)
+    request.onerror = () => reject(request.error)
+    request.onsuccess = () => resolve(request.result)
+    request.onupgradeneeded = (e) => {
+      const db = e.target.result
+      if (!db.objectStoreNames.contains(STATE_STORE)) db.createObjectStore(STATE_STORE, { keyPath: 'key' })
+    }
+  })
+}
+
+async function putStateData(key, bytes) {
+  const db = await openStateDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STATE_STORE, 'readwrite')
+    tx.objectStore(STATE_STORE).put({ key, data: bytes, savedAt: Date.now() })
+    tx.oncomplete = () => resolve(true)
+    tx.onerror = () => reject(tx.error)
+    tx.onabort = () => reject(tx.error)
+  })
+}
+
+async function getStateData(key) {
+  const db = await openStateDB()
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(STATE_STORE, 'readonly').objectStore(STATE_STORE).get(key)
+    request.onsuccess = () => resolve(request.result ? new Uint8Array(request.result.data) : null)
+    request.onerror = () => reject(request.error)
+  })
+}
+
+// Read the current game state from the running emulator (returns a safe copy)
+function captureState() {
+  const gm = window.EJS_emulator?.gameManager
+  if (!gm || typeof gm.getState !== 'function') return null
+  const state = gm.getState()
+  return state && state.length ? new Uint8Array(state) : null
+}
+
+// Automatic save (used when leaving the game, hiding the tab, closing the app)
+function autoSaveNow() {
+  if (!currentGame || !window.EJS_emulator) return
+  try {
+    const bytes = captureState()
+    if (!bytes) return
+    const game = currentGame
+    putStateData(autoKey(game.gameId), bytes)
+      .then(() => saveAutoResumeState(game.gameId, game.name, game.systemId, 'idb'))
+      .catch(e => console.log('Auto-save failed:', e))
+  } catch (e) {
+    console.log('Could not auto-save:', e)
+  }
+}
+
+// Save button
+async function saveCurrentState() {
+  if (!window.EJS_emulator || !currentGame) {
+    showToast('No game running', 'error')
+    return
+  }
+
+  const bytes = captureState()
+  if (!bytes) {
+    showToast('Could not read the game state', 'error')
+    return
+  }
+
+  try {
+    await putStateData(stateKey(currentGame.gameId), bytes)
+  } catch (e) {
+    console.error('Local save error:', e)
+    showToast('Save failed (storage error)', 'error')
+    return
+  }
+
+  const { user } = store.getState()
+  if (user) {
+    try {
+      showLoading('Saving to cloud...')
+      const blob = new Blob([bytes], { type: 'application/octet-stream' })
+      await saves.save(user.id, cloudKey(currentGame.gameId), blob)
+      showToast('Saved on device and in cloud!', 'success')
+    } catch (error) {
+      console.error('Cloud save error:', error)
+      showToast('Saved on device (cloud unavailable)', 'warning')
+    } finally {
+      hideLoading()
+    }
+  } else {
+    showToast('Game saved!', 'success')
+  }
+}
+
+// Load button
+async function loadCurrentState() {
+  if (!window.EJS_emulator || !currentGame) {
+    showToast('No game running', 'error')
+    return
+  }
+
+  let bytes = null
+  let source = 'device'
+
+  try { bytes = await getStateData(stateKey(currentGame.gameId)) } catch (e) { console.error('Local load error:', e) }
+
+  // Nothing on this device - try the cloud
+  const { user } = store.getState()
+  if (!bytes && user) {
+    try {
+      showLoading('Loading from cloud...')
+      const blob = await saves.load(user.id, cloudKey(currentGame.gameId))
+      if (blob) {
+        bytes = new Uint8Array(await blob.arrayBuffer())
+        source = 'cloud'
+      }
+    } catch (error) {
+      console.error('Cloud load error:', error)
+    } finally {
+      hideLoading()
+    }
+  }
+
+  if (!bytes) {
+    showToast('No saved game found. Press Save first.', 'error')
+    return
+  }
+
+  try {
+    window.EJS_emulator.gameManager.loadState(bytes)
+    showToast(source === 'cloud' ? 'Loaded from cloud!' : 'Game loaded!', 'success')
+  } catch (e) {
+    console.error('Load state error:', e)
+    showToast('Could not load the saved game', 'error')
+  }
 }
 
 // UI Helpers
@@ -1027,10 +1131,12 @@ function showCloudSaveMenu(hasCloudSave) {
     const { user } = store.getState()
     try {
       showLoading('Uploading to cloud...')
-      const saveData = window.EJS_emulator.gameManager.getSaveFile()
-      if (saveData) {
-        const blob = new Blob([saveData], { type: 'application/octet-stream' })
-        await saves.save(user.id, currentGame.gameId, blob)
+      const bytes = captureState()
+      if (bytes) {
+        const blob = new Blob([bytes], { type: 'application/octet-stream' })
+        await saves.save(user.id, cloudKey(currentGame.gameId), blob)
+        // keep the same state on this device too
+        await putStateData(stateKey(currentGame.gameId), bytes).catch(() => {})
         showToast('Uploaded to cloud!', 'success')
       } else {
         showToast('No save data to upload', 'error')
@@ -1049,11 +1155,11 @@ function showCloudSaveMenu(hasCloudSave) {
       const { user } = store.getState()
       try {
         showLoading('Downloading from cloud...')
-        const saveBlob = await saves.load(user.id, currentGame.gameId)
+        const saveBlob = await saves.load(user.id, cloudKey(currentGame.gameId))
         if (saveBlob) {
-          const arrayBuffer = await saveBlob.arrayBuffer()
-          // Load SRAM save file into emulator
-          window.EJS_emulator.gameManager.loadSaveFiles(arrayBuffer)
+          const bytes = new Uint8Array(await saveBlob.arrayBuffer())
+          window.EJS_emulator.gameManager.loadState(bytes)
+          await putStateData(stateKey(currentGame.gameId), bytes).catch(() => {})
           showToast('Downloaded from cloud!', 'success')
         }
       } catch (error) {
