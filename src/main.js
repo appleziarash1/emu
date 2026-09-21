@@ -1,3 +1,4 @@
+import './pwa.js';
 import './style.css'
 import './cheats.css'
 import './welcome.css'

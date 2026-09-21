@@ -1,177 +1,160 @@
-// PixelVault Service Worker v2
-const CACHE_VERSION = 'v2'
-const STATIC_CACHE = `pixelvault-static-${CACHE_VERSION}`
-const DYNAMIC_CACHE = `pixelvault-dynamic-${CACHE_VERSION}`
-const CORE_CACHE = `pixelvault-cores-${CACHE_VERSION}`
-const IMAGE_CACHE = `pixelvault-images-${CACHE_VERSION}`
+/* PixelVault service worker (v2 - stability release)
+ * - Pages: network-first with a 3.5s timeout, then cached shell (fast launch on slow/flaky mobile data)
+ * - Emulator cores / cover art / fonts: cache-first (big files, rarely change)
+ * - Same-origin assets: stale-while-revalidate
+ * - Supabase, non-GET and Range requests are never touched
+ * - Redirected responses are stripped before serving a navigation (Safari rejects them)
+ * Bump VERSION to make every client drop old caches.
+ */
+const VERSION = 'v2';
+const SHELL_CACHE = `pv-shell-${VERSION}`;
+const CORE_CACHE = `pv-cores-${VERSION}`;
+const MEDIA_CACHE = `pv-media-${VERSION}`;
+const MAX_MEDIA_ENTRIES = 120; // opaque (no-cors) images are padded in Chromium quota, keep this modest
+const NAV_TIMEOUT_MS = 3500;
 
-const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/gamepad.svg',
+const PRECACHE = [
   '/manifest.json',
-]
+  '/icons/icon-180.png',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
+];
 
-// Max items in dynamic cache
-const MAX_DYNAMIC_ITEMS = 100
-const MAX_IMAGE_ITEMS = 200
+const hostMatches = (host, list) => list.some((h) => host === h || host.endsWith('.' + h));
 
-// Install event - cache static assets
+// Emulator cores are large (5-30 MB) and versioned -> cache-first.
+// Matched by host (official CDN) OR by path/extension, so self-hosted /data/ or any other CDN also works.
+const CORE_HOSTS = ['cdn.emulatorjs.org', 'emulatorjs.org'];
+const isCoreAsset = (url) =>
+  hostMatches(url.hostname, CORE_HOSTS) ||
+  /\.(wasm|7z)$/i.test(url.pathname) ||
+  (/\/(cores|data)\//i.test(url.pathname) && /\.(data|zip|js|css|json)$/i.test(url.pathname));
+
+const MEDIA_HOSTS = [
+  'thumbnails.libretro.com',
+  'raw.githubusercontent.com',
+  'fonts.googleapis.com',
+  'fonts.gstatic.com',
+];
+const BYPASS_HOSTS = ['supabase.co', 'supabase.in'];
+
+// Safari refuses to serve a *redirected* response to a navigation request.
+function clean(res) {
+  if (res && res.redirected) {
+    return new Response(res.body, { status: res.status, statusText: res.statusText, headers: res.headers });
+  }
+  return res;
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(STATIC_CACHE).then((cache) => {
-      console.log('[SW] Caching static assets')
-      return cache.addAll(STATIC_ASSETS)
-    })
-  )
-  self.skipWaiting()
-})
+    (async () => {
+      const cache = await caches.open(SHELL_CACHE);
+      await cache.addAll(PRECACHE).catch(() => {}); // never fail install because of one 404
+      try {
+        const res = await fetch('/');
+        if (res && res.ok) await cache.put('/index.html', clean(res));
+      } catch (e) { /* offline install: shell gets cached on first successful navigation */ }
+      await self.skipWaiting();
+    })()
+  );
+});
 
-// Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
-  const currentCaches = [STATIC_CACHE, DYNAMIC_CACHE, CORE_CACHE, IMAGE_CACHE]
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((name) => name.startsWith('pixelvault-') && !currentCaches.includes(name))
-          .map((name) => {
-            console.log('[SW] Deleting old cache:', name)
-            return caches.delete(name)
-          })
-      )
-    })
-  )
-  self.clients.claim()
-})
+    (async () => {
+      const keep = new Set([SHELL_CACHE, CORE_CACHE, MEDIA_CACHE]);
+      const names = await caches.keys();
+      await Promise.all(names.filter((n) => n.startsWith('pv-') && !keep.has(n)).map((n) => caches.delete(n)));
+      await self.clients.claim();
+    })()
+  );
+});
 
-// Fetch event - serve from cache, fallback to network
-self.addEventListener('fetch', (event) => {
-  const url = new URL(event.request.url)
-
-  // Skip non-GET requests
-  if (event.request.method !== 'GET') return
-
-  // Skip chrome-extension and other non-http requests
-  if (!url.protocol.startsWith('http')) return
-
-  // Handle EmulatorJS cores - cache first, long-term storage
-  if (url.hostname === 'cdn.emulatorjs.org') {
-    event.respondWith(
-      caches.open(CORE_CACHE).then((cache) => {
-        return cache.match(event.request).then((cached) => {
-          if (cached) {
-            console.log('[SW] Serving core from cache:', url.pathname)
-            return cached
-          }
-
-          return fetch(event.request).then((response) => {
-            if (response.ok) {
-              console.log('[SW] Caching core:', url.pathname)
-              cache.put(event.request, response.clone())
-            }
-            return response
-          })
-        })
-      })
-    )
-    return
-  }
-
-  // Handle cover art images - cache with limit
-  if (url.hostname.includes('libretro') || url.hostname.includes('thumbnails') ||
-      url.pathname.includes('cover') || url.pathname.includes('boxart')) {
-    event.respondWith(
-      caches.open(IMAGE_CACHE).then((cache) => {
-        return cache.match(event.request).then((cached) => {
-          if (cached) return cached
-
-          return fetch(event.request).then((response) => {
-            if (response.ok) {
-              // Limit cache size
-              limitCacheSize(IMAGE_CACHE, MAX_IMAGE_ITEMS)
-              cache.put(event.request, response.clone())
-            }
-            return response
-          }).catch(() => {
-            // Return placeholder on failure
-            return new Response('', { status: 404 })
-          })
-        })
-      })
-    )
-    return
-  }
-
-  // Static assets - cache first
-  if (STATIC_ASSETS.some(asset => url.pathname === asset || url.pathname.endsWith(asset))) {
-    event.respondWith(
-      caches.match(event.request).then((cached) => {
-        return cached || fetch(event.request)
-      })
-    )
-    return
-  }
-
-  // Network-first for API requests
-  if (url.pathname.startsWith('/api') || url.hostname.includes('supabase')) {
-    event.respondWith(
-      fetch(event.request)
-        .catch(() => caches.match(event.request))
-    )
-    return
-  }
-
-  // Stale-while-revalidate for everything else
-  event.respondWith(
-    caches.open(DYNAMIC_CACHE).then((cache) => {
-      return cache.match(event.request).then((cached) => {
-        const fetchPromise = fetch(event.request).then((response) => {
-          if (response.ok) {
-            limitCacheSize(DYNAMIC_CACHE, MAX_DYNAMIC_ITEMS)
-            cache.put(event.request, response.clone())
-          }
-          return response
-        }).catch(() => cached)
-
-        return cached || fetchPromise
-      })
-    })
-  )
-})
-
-// Limit cache size
-async function limitCacheSize(cacheName, maxItems) {
-  const cache = await caches.open(cacheName)
-  const keys = await cache.keys()
-  if (keys.length > maxItems) {
-    // Delete oldest items
-    const toDelete = keys.slice(0, keys.length - maxItems)
-    await Promise.all(toDelete.map(key => cache.delete(key)))
+async function trimCache(name, max) {
+  const cache = await caches.open(name);
+  const keys = await cache.keys();
+  if (keys.length > max) {
+    await Promise.all(keys.slice(0, keys.length - max).map((k) => cache.delete(k)));
   }
 }
 
-// Handle messages from the client
+async function cacheFirst(request, cacheName, trim) {
+  const cache = await caches.open(cacheName);
+  const hit = await cache.match(request);
+  if (hit) return hit;
+  const res = await fetch(request);
+  if (res && (res.ok || res.type === 'opaque')) {
+    cache.put(request, res.clone());
+    if (trim) trimCache(cacheName, trim);
+  }
+  return res;
+}
+
+async function staleWhileRevalidate(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const hit = await cache.match(request);
+  const network = fetch(request)
+    .then((res) => {
+      if (res && res.ok) cache.put(request, res.clone());
+      return res;
+    })
+    .catch(() => hit);
+  return hit || network;
+}
+
+async function networkFirstPage(request, event) {
+  const cache = await caches.open(SHELL_CACHE);
+  const cached = (await cache.match('/index.html')) || (await cache.match('/'));
+
+  const network = fetch(request)
+    .then((res) => {
+      if (res && res.ok) {
+        const c = clean(res.clone());
+        cache.put('/index.html', c);
+      }
+      return clean(res);
+    })
+    .catch(() => null);
+
+  // let the refresh finish in the background even if we answer from cache
+  if (event && event.waitUntil) event.waitUntil(network);
+
+  if (!cached) return (await network) || Response.error(); // very first visit: just wait
+
+  const timeout = new Promise((resolve) => setTimeout(() => resolve(null), NAV_TIMEOUT_MS));
+  const res = await Promise.race([network, timeout]);
+  return res || clean(cached) || Response.error();
+}
+
+self.addEventListener('fetch', (event) => {
+  const { request } = event;
+  if (request.method !== 'GET') return;
+  if (request.headers.has('range')) return; // audio/video range requests
+
+  const url = new URL(request.url);
+  if (hostMatches(url.hostname, BYPASS_HOSTS)) return;
+
+  if (request.mode === 'navigate') {
+    event.respondWith(networkFirstPage(request, event));
+    return;
+  }
+
+  if (isCoreAsset(url)) {
+    event.respondWith(cacheFirst(request, CORE_CACHE));
+    return;
+  }
+
+  if (hostMatches(url.hostname, MEDIA_HOSTS)) {
+    event.respondWith(cacheFirst(request, MEDIA_CACHE, MAX_MEDIA_ENTRIES));
+    return;
+  }
+
+  if (url.origin === self.location.origin) {
+    event.respondWith(staleWhileRevalidate(request, SHELL_CACHE));
+  }
+});
+
 self.addEventListener('message', (event) => {
-  if (event.data === 'skipWaiting') {
-    self.skipWaiting()
-  }
-
-  if (event.data === 'clearCache') {
-    caches.keys().then((names) => {
-      return Promise.all(names.map(name => caches.delete(name)))
-    }).then(() => {
-      event.ports[0]?.postMessage({ cleared: true })
-    })
-  }
-
-  if (event.data === 'getCacheStats') {
-    Promise.all([
-      caches.open(CORE_CACHE).then(c => c.keys()).then(k => k.length),
-      caches.open(IMAGE_CACHE).then(c => c.keys()).then(k => k.length),
-      caches.open(DYNAMIC_CACHE).then(c => c.keys()).then(k => k.length),
-    ]).then(([cores, images, dynamic]) => {
-      event.ports[0]?.postMessage({ cores, images, dynamic })
-    })
-  }
-})
+  if (event.data === 'SKIP_WAITING') self.skipWaiting();
+});

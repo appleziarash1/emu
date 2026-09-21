@@ -1,0 +1,103 @@
+/* iOS / PWA polish — imported from pwa.js */
+
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --vh: 1vh;
+}
+
+html, body {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;            /* no rubber-band bounce in standalone */
+}
+
+body {
+  padding-left: var(--sal);
+  padding-right: var(--sar);
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* Header + slide-in drawer must clear the notch / Dynamic Island / home indicator */
+.header { padding-top: var(--sat); }
+.mobile-nav-drawer { padding-top: var(--sat); padding-bottom: var(--sab); }
+
+/* Emulator view fills the real visible height */
+.emulator-view { min-height: calc(var(--vh, 1vh) * 100); }
+.emulator-container { touch-action: none; }
+
+/* No text selection / callouts / zoom on game surfaces */
+#emulator-container, .virtual-gamepad, .virtual-gamepad * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: none;
+}
+
+/* Virtual gamepad stays out of the home indicator zone */
+.virtual-gamepad, .ejs_virtualGamepad_parent, .ejs_virtualGamepad_bottom {
+  padding-bottom: var(--sab);
+}
+
+/* Inputs >= 16px stop iOS auto-zooming on focus */
+input, select, textarea { font-size: 16px; }
+
+/* Buttons: comfortable touch targets */
+.control-btn, .toolbar-btn, .nav-btn, .btn { min-height: 44px; }
+
+/* Footer clears the home indicator */
+.footer { padding-bottom: calc(var(--sab) + 16px); }
+
+/* iOS "Add to Home Screen" hint */
+.pv-install-hint {
+  position: fixed;
+  left: 12px; right: 12px;
+  bottom: calc(var(--sab) + 12px);
+  z-index: 9999;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 12px 14px;
+  background: #16213e;
+  color: #fff;
+  border: 2px solid #e94560;
+  border-radius: 12px;
+  font-size: 14px; line-height: 1.4;
+  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+}
+.pv-share-icon { display: inline-block; vertical-align: -3px; color: #e94560; }
+.pv-install-close {
+  background: none; border: 0; color: #fff; font-size: 26px; line-height: 1; padding: 4px 8px; cursor: pointer;
+}
+
+/* Only when launched from the Home Screen */
+@media (display-mode: standalone) {
+  .pv-install-hint { display: none; }
+}
+
+/* ---- playing: maximise the game area ---- */
+body.pv-playing .footer { display: none; }
+@media (orientation: landscape) and (max-height: 500px) {
+  body.pv-playing .header { display: none; }
+}
+
+/* ---- toast (update / first-run notices) ---- */
+.pv-toast {
+  position: fixed;
+  left: 12px; right: 12px;
+  bottom: calc(var(--sab) + 12px);
+  z-index: 9998;
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 12px 12px 14px;
+  background: #16213e; color: #fff;
+  border: 2px solid #e94560; border-radius: 12px;
+  font-size: 14px; line-height: 1.4;
+  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+}
+.pv-toast-text { flex: 1; }
+.pv-toast-btn {
+  background: #e94560; color: #fff; border: 0; border-radius: 8px;
+  padding: 8px 14px; font-weight: 600; cursor: pointer; min-height: 36px;
+}
+.pv-toast-close { background: none; border: 0; color: #fff; font-size: 24px; line-height: 1; padding: 2px 6px; cursor: pointer; }
