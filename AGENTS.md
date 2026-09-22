@@ -1,4 +1,4 @@
-# Underworld Escape â€” notes for future sessions
+# Underworld Escape — notes for future sessions
 
 Single-file canvas roguelike PWA. No build step: `index.html` is the whole game,
 `sw.js` the offline shell, `manifest.webmanifest` + `icon-*.png` the install bits.
@@ -43,6 +43,38 @@ Single-file canvas roguelike PWA. No build step: `index.html` is the whole game,
   real loop and reads the real mapping rather than reimplementing either — a test
   that calls `openPause()` itself passes even when the wiring is dead.
 
+## Barriers
+- `room.barriers` holds axis-aligned blocks, built in `buildRoom` from the room
+  seed, so a resumed run gets them in the same spots. Placement rejects anything
+  near the entrance, the gate or the road: a barrier must never seal the way in
+  or the way on. `feature_test.py` asserts those minimums across 12 depths,
+  because a bad generation would only show up on some screens and seeds.
+- The hero is blocked while walking, but a dash passes straight through:
+  `state.dashT > 0` skips `pushOutOfBarriers` entirely. Dash is deliberately
+  reused as the "crosses stone" key — it is already the state where the body
+  moves as a burst, so no new input or cooldown was needed. A dash that ends
+  inside a block is finished off by `ejectFromBarriers` in the dash's own
+  direction, so the hero is never left embedded in stone.
+- Foes never pass: their `pushOutOfBarriers` call is unconditional, and the boss
+  charge is stopped by it too (a charge is a shove, not a dash). `steerAround`
+  feeds them a mostly-sideways direction when a block is ahead, so they walk
+  around instead of grinding nose-first. There is no pathfinding — barriers are
+  only about as wide as a body is thick, so sliding along one reaches the far
+  side.
+- `drawBarrier` extrudes the stone **upward from its collision footprint**: the
+  bottom of the drawn body is `b.y + b.h/2`, not `b.y + b.h`. Drawing from
+  `b.y - lift` down to `b.y + b.h` (the first version) put tall barriers' art 67px
+  below the ground that actually blocks you, because a barrier's `h` is its
+  depth, not its visual height. `feature_test.py` compares a canvas column with
+  and without the stone to pin this down; the `lift` is purely visual and adds
+  the lit top face above the footprint.
+- Order inside the enemy loop matters: `pushOutOfBarriers` has to run **after**
+  knockback and the wall clamp, or a knocked-back foe can be left inside a block
+  for a frame.
+- Do not empty `room.enemies` without setting `room.cleared = true` first, or the
+  reward screen opens and pauses the sim — the barrier tests hit exactly this and
+  read as "the hero will not move".
+
 ## Gods, slots and the market
 - A god is one entry in `GODS` with a variant per slot (`attack`, `special`,
   `spell`), each holding `name`, `desc`, `apply(s)` and `flags`. `SLOTS` is the
@@ -86,12 +118,17 @@ Single-file canvas roguelike PWA. No build step: `index.html` is the whole game,
   `die()`/`win()` call `clearSave()`.
 - A chamber's layout is rebuilt from `room.seed`, not stored piece by piece. So
   **anything that decorates a room in `buildRoom()` must draw from `rng()`, never
-  `Math.random()`** â€” one stray `Math.random()` shifts the stream and the room
+  `Math.random()`** — one stray `Math.random()` shifts the stream and the room
   comes back different. Enemy spawning is exempt: it runs after the layout and
   its foes are written to the save explicitly.
 - `save_test.py` guards this: it reloads and compares the rebuilt chamber stone
   for stone. If it fails with matching counts but different positions, look for a
   `Math.random()` that crept into `buildRoom()`.
+- Leaving the page fires the `pagehide` autosave, so **a reload overwrites the
+  snapshot**. Read `ue_run_v1` back after the reload, not before, or a foe that
+  lands a blow in between makes the check look like a save bug. `save_test.py`
+  read it before the reload until this was fixed, and failed at random once
+  barriers put foes closer to the hero.
 - Power effects are captured by saving the resulting stats (`dmg`, `reach`,
   `shieldMax`, ...) plus the slot flags, not by replaying `apply()`, which would
   double them.
@@ -123,7 +160,7 @@ Single-file canvas roguelike PWA. No build step: `index.html` is the whole game,
 
 ## Running the tests
 Playwright is not installed by default: `pip install playwright` then
-`python3 -m playwright install chromium`. Run the suites one at a time â€” several
+`python3 -m playwright install chromium`. Run the suites one at a time — several
 browsers back to back can crash a page under load ("Target crashed"), which is
 resource contention rather than a real failure; rerun that suite on its own.
 

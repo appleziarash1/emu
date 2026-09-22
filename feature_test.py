@@ -313,6 +313,147 @@ with sync_playwright() as pw:
     check("the next chamber is populated and the HUD is back",
           after_skip["enemies"] > 0 and after_skip["hud"] and after_skip["hidden"], after_skip)
 
+
+    # --- barriers: a wall you dash through, that a foe has to route around
+    # The hero walks, then dashes, at a full-height wall. Fast foes are left
+    # chasing on the near side: if a single one crossed, its ai got through the
+    # stone and the whole idea is broken.
+    wall = page.evaluate("""() => {
+      const g = window.__game, r = g.room, p = g.state.player;
+      r.cleared = true;                 // stop the reward screen pausing the sim
+      r.enemies.length = 0;
+      r.barriers.length = 0;
+      r.barriers.push({ x: r.w / 2, y: r.h / 2, w: 30, h: r.h });
+      p.x = r.w / 2 - 60; p.y = r.h / 2; p.kx = 0; p.ky = 0;
+      g.state.dashT = 0; g.state.dashCd = 0;
+      const mk = (y, kind, speed) => r.enemies.push({ kind, x: 80, y, r: 14,
+        hp: 900, max: 900, speed, dmg: 5, color: '#8f7bd8', atk: 0, shoot: 99 });
+      mk(r.h / 2, 'shade', 400);
+      mk(r.h / 2 + 90, 'brute', 300);
+      mk(r.h / 2 - 90, 'wraith', 380);
+      return { wallX: r.w / 2, startX: p.x };
+    }""")
+
+    # walking at it must not carry the hero through
+    page.keyboard.down("d")
+    page.wait_for_timeout(900)
+    page.keyboard.up("d")
+    walked = page.evaluate("() => window.__game.state.player.x")
+    check("a barrier stops the hero who only walks",
+          walked < wall["wallX"], (round(walked), wall))
+
+    # a dash does carry the hero through, and never leaves them in the stone
+    page.evaluate("""() => { const g = window.__game, r = g.room, p = g.state.player;
+      p.x = r.w / 2 - 60; p.y = r.h / 2; p.kx = 0; p.ky = 0; p.hx = 1; p.hy = 0;
+      g.state.dashCd = 0; }""")
+    page.keyboard.down("d")
+    page.wait_for_timeout(60)
+    page.keyboard.press(" ")
+    page.wait_for_timeout(900)
+    page.keyboard.up("d")
+    dashed = page.evaluate("""() => { const g = window.__game, p = g.state.player;
+      return { x: p.x, inside: g.insideBarrier(p.x, p.y, p.r * 0.7) }; }""")
+    check("a dash carries the hero through the barrier",
+          dashed["x"] > wall["wallX"], (round(dashed["x"]), wall))
+    check("the dash leaves the hero out of the stone, not inside it",
+          dashed["inside"] is False, dashed)
+
+    # foes have no dash, so they must never end up on the far side
+    far = 0
+    into = 0
+    for _ in range(20):
+        page.wait_for_timeout(250)
+        s = page.evaluate("""() => { const g = window.__game, r = g.room;
+          let maxX = -1e9, inside = 0;
+          for (const e of r.enemies) { if (e.dead) continue;
+            maxX = Math.max(maxX, e.x);
+            if (g.insideBarrier(e.x, e.y, e.r * 0.7)) inside++; }
+          return { maxX, inside }; }""")
+        far = max(far, s["maxX"])
+        into = max(into, s["inside"])
+    check("a foe cannot cross a barrier it has no dash to pass",
+          far < wall["wallX"], (round(far), wall))
+    check("a foe is never left standing inside a barrier", into == 0, into)
+
+    # generated chambers must always keep the way in and the way on walkable
+    layout = page.evaluate("""() => {
+      const g = window.__game, out = [];
+      for (let d = 1; d <= 12; d++) {
+        g.state.depth = d; g.newRoom();
+        const r = g.room;
+        let minEntry = 1e9, minDoor = 1e9, minRoad = 1e9;
+        for (const b of r.barriers) {
+          minEntry = Math.min(minEntry, Math.hypot(b.x - r.entry.x, b.y - r.entry.y));
+          minDoor = Math.min(minDoor, Math.hypot(b.x - r.door.x, b.y - r.door.y));
+          minRoad = Math.min(minRoad, g.roadDistance(b.x, b.y));
+        }
+        out.push({ d, n: r.barriers.length,
+                   blocked: r.enemies.filter((e) => g.insideBarrier(e.x, e.y, e.r * 0.7)).length,
+                   minEntry: Math.round(minEntry), minDoor: Math.round(minDoor),
+                   minRoad: Math.round(minRoad) });
+      }
+      return out; }""")
+    check("every chamber gets barriers",
+          all(r["n"] >= 1 for r in layout), [(r["d"], r["n"]) for r in layout])
+    check("no barrier ever sits on the entrance or the gate",
+          all(r["minEntry"] >= 100 and r["minDoor"] >= 100 for r in layout),
+          [(r["d"], r["minEntry"], r["minDoor"]) for r in layout])
+    check("no barrier blocks the road",
+          all(r["minRoad"] >= 60 for r in layout),
+          [(r["d"], r["minRoad"]) for r in layout])
+    check("no foe spawns inside a barrier",
+          all(r["blocked"] == 0 for r in layout), [(r["d"], r["blocked"]) for r in layout])
+
+    # The stone you see must be the stone you are stopped by. Compare a column
+    # through a barrier with and without it drawn, row by row, so an animated
+    # floor or torch does not register as a difference.
+    def stone_rows(w, h):
+        page.evaluate("""() => { const g = window.__game, r = g.room, p = g.state.player;
+          r.cleared = true; r.enemies.length = 0; r.barriers.length = 0;
+          p.x = 420; p.y = r.h / 2; p.kx = 0; p.ky = 0; }""")
+        page.wait_for_timeout(1200)                  # let the camera settle
+        page.evaluate("([w, h]) => { const g = window.__game; window.__bk = { x: 520, y: g.room.h / 2, w, h }; }", [w, h])
+        sample = """() => {
+          const g = window.__game, c = document.getElementById('stage'), ctx = c.getContext('2d');
+          const bk = window.__bk, dpr = c.width / window.innerWidth, sc = g.cam.scale;
+          const x0 = Math.max(0, Math.round((bk.x - bk.w / 2 - g.cam.x) * sc * dpr));
+          const x1 = Math.min(c.width, Math.round((bk.x + bk.w / 2 - g.cam.x) * sc * dpr));
+          const col = [];
+          for (let y = 0; y < c.height; y++) col.push(ctx.getImageData(x0, y, Math.max(2, x1 - x0), 1).data);
+          return { camY: g.cam.y, sc, dpr, col };
+        }"""
+        page.evaluate("() => { window.__game.room.barriers.push(Object.assign({}, window.__bk)); }")
+        page.wait_for_timeout(400)
+        with_stone = page.evaluate(sample)
+        page.evaluate("() => { window.__game.room.barriers.length = 0; }")
+        page.wait_for_timeout(400)
+        blank = page.evaluate(sample)
+        assert abs(with_stone["camY"] - blank["camY"]) < 0.01 and abs(with_stone["sc"] - blank["sc"]) < 1e-6
+        px = with_stone["sc"] * with_stone["dpr"]
+        strong = []
+        for y in range(len(with_stone["col"])):
+            a, b2 = with_stone["col"][y], blank["col"][y]
+            n = len(a) // 4
+            mean = sum(abs(a[i * 4] - b2[i * 4]) + abs(a[i * 4 + 1] - b2[i * 4 + 1]) +
+                       abs(a[i * 4 + 2] - b2[i * 4 + 2]) for i in range(n)) / (3 * n)
+            if mean > 18:
+                strong.append(y)
+        if not strong:
+            return None
+        centre = page.evaluate("() => window.__game.room.h / 2")
+        return {"drawnTop": with_stone["camY"] + strong[0] / px,
+                "drawnBottom": with_stone["camY"] + strong[-1] / px,
+                "blockedBottom": centre + h / 2}
+
+    for label, bw, bh in [("vertical", 26, 150), ("horizontal", 140, 22)]:
+        rows = stone_rows(bw, bh)
+        check("a drawn barrier stands exactly on the ground it blocks (" + label + ")",
+              rows is not None and abs(rows["drawnBottom"] - rows["blockedBottom"]) < 2,
+              rows)
+        check("a drawn barrier rises above its footprint (" + label + ")",
+              rows is not None and rows["drawnTop"] < rows["blockedBottom"] - 4, rows)
+
+
     print("page errors:", errors[:5] or "none")
     browser.close()
 

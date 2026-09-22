@@ -324,6 +324,8 @@
       • SPECIAL hurls a blade that cuts through one side of the room and comes
         back to your hand, cutting again on the way home.<br />
       • DASH makes you briefly untouchable — dash through enemies to escape.<br />
+      • Stone barriers stop you walking across, whatever you carry. Only a DASH
+        carries you through one. Foes cannot dash, so they have to go around.<br />
       • Clear every shade in a chamber, then pick a god's boon. The arm you chose
         at the start stays with you all the way down.<br />
       • Boons stack. Build a strong run, then beat the Warden.<br />
@@ -596,6 +598,67 @@
       return { x, y, hit: hitDown, dash: dashDown, spell: spellDown, special: specialDown };
     }
     return null;
+  }
+
+  // Push a circle out of any barrier it overlaps. The shortest axis wins, so a
+  // body is nudged out the side it is closest to and slides along the wall rather
+  // than being flung around it.
+  function pushOutOfBarriers(ent, r) {
+    for (const b of room.barriers || []) {
+      const hw = b.w / 2 + r, hh = b.h / 2 + r;
+      const dx = ent.x - b.x, dy = ent.y - b.y;
+      if (Math.abs(dx) >= hw || Math.abs(dy) >= hh) continue;
+      const px = hw - Math.abs(dx), py = hh - Math.abs(dy);
+      if (px < py) ent.x = b.x + (dx < 0 ? -hw : hw);
+      else ent.y = b.y + (dy < 0 ? -hh : hh);
+    }
+  }
+
+  function insideBarrier(x, y, r) {
+    return (room.barriers || []).some((b) =>
+      Math.abs(x - b.x) < b.w / 2 + r && Math.abs(y - b.y) < b.h / 2 + r);
+  }
+
+  // Finish a dash that stopped inside a barrier: keep going the way the dash was
+  // heading until the body is clear. Falls back to the nearest face if it ran out
+  // of room, so the hero can never end a dash embedded in stone.
+  function ejectFromBarriers(ent, r, dirX, dirY) {
+    const inside = () => insideBarrier(ent.x, ent.y, r);
+    if (!inside()) return;
+    const len = Math.hypot(dirX, dirY) || 1;
+    const ux = dirX / len, uy = dirY / len;
+    for (let i = 0; i < 60 && inside(); i++) { ent.x += ux * 3; ent.y += uy * 3; }
+    if (inside()) pushOutOfBarriers(ent, r);
+  }
+
+  // The nearest barrier in front of an entity, or null. Because a barrier is only
+  // about as wide as a body is thick, walking straight at one and sliding along it
+  // reaches the other side soon enough — no pathfinding, which the enemy AI has
+  // never had anyway.
+  function barrierAhead(ent, dirX, dirY, reach) {
+    let best = null, bestD = Infinity;
+    for (const b of room.barriers || []) {
+      const d = Math.hypot(b.x - ent.x, b.y - ent.y);
+      if (d > reach + Math.max(b.w, b.h) / 2) continue;
+      const toward = ((b.x - ent.x) * dirX + (b.y - ent.y) * dirY) / (d || 1);
+      if (toward < 0.35) continue;
+      if (d < bestD) { bestD = d; best = b; }
+    }
+    return best;
+  }
+
+  // Steering that keeps a walker moving toward (dx, dy) while it is pressed against
+  // a barrier: slide along the lower-cost side. Returns a unit vector.
+  function steerAround(ent, r, dx, dy) {
+    const b = barrierAhead(ent, dx, dy, r + 46);
+    if (!b) return { x: dx, y: dy };
+    // Which side of the barrier's long axis the walker is already on; going that
+    // way is the shorter turn, so the two sides do not fight each other.
+    const across = Math.abs(b.w) < Math.abs(b.h);   // long axis runs vertically
+    const sign = across ? (ent.y < b.y ? -1 : 1) : (ent.x < b.x ? -1 : 1);
+    const perpX = across ? 0 : sign, perpY = across ? sign : 0;
+    // Mostly sideways with a little forward pull, so it never stalls nose-on.
+    return { x: perpX * 0.85 + dx * 0.35, y: perpY * 0.85 + dy * 0.35 };
   }
 
   // ------------------------------------------------------------- utilities
@@ -1006,6 +1069,30 @@
       }
     }
 
+    // Stone barriers: waist-high walls that break the open hall into cover. They
+    // are drawn as low blocks rather than tall ones so they read as something you
+    // can cross, not as architecture. Both the hero and the foes are stopped by
+    // them; a dash is the one thing that carries a body through. Generated from
+    // the room seed like the rest of the dressing, so a resume rebuilds them.
+    room.barriers = [];
+    const bcount = clamp(Math.round((w * h) / 200000), 2, 6);
+    for (let i = 0, guard = 0; i < bcount && guard < 80; guard++) {
+      const bx = rand(70, w - 70), by = rand(70, h - 70);
+      // Clear of the entrance the hero is dropped at and of the gate, so a barrier
+      // never seals the way in or the way on. Slightly off the road, because the
+      // road is the one line that must stay walkable.
+      if (Math.hypot(bx - room.entry.x, by - room.entry.y) < 120) continue;
+      if (Math.hypot(bx - room.door.x, by - room.door.y) < 120) continue;
+      if (roadDistance(bx, by) < 68) continue;
+      if (room.pillars.some((pl) => Math.hypot(pl.x - bx, pl.y - by) < 80)) continue;
+      if (room.barriers.some((o) => Math.hypot(o.x - bx, o.y - by) < 150)) continue;
+      // Lying across the hall, or running its length: both shapes occur.
+      const along = rng() < 0.5;
+      const len = rand(80, 150), thick = rand(18, 26);
+      room.barriers.push({ x: bx, y: by, w: along ? len : thick, h: along ? thick : len });
+      i++;
+    }
+
     for (let i = 0; i < randi(6, 12); i++) {
       room.cracks.push({ x: rand(40, w - 40), y: rand(40, h - 40),
                          a: rand(-30, 30), b: rand(-30, 30), c: rand(-22, 22), d: rand(-22, 22) });
@@ -1058,7 +1145,12 @@
     let x, y, tries = 0;
     do {
       x = rand(40, room.w - 40); y = rand(40, room.h - 40); tries++;
-    } while (Math.hypot(x - p.x, y - p.y) < 150 && tries < 60);
+    } while ((Math.hypot(x - p.x, y - p.y) < 150 || insideBarrier(x, y, 18)) && tries < 60);
+    // If the retries ran out, shove the body clear rather than dropping a foe in
+    // stone where it could never reach the hero.
+    const spot = { x, y };
+    pushOutOfBarriers(spot, 18);
+    x = spot.x; y = spot.y;
 
     const roll = Math.random();
     const tier = Math.min(3, Math.floor(depth / 3));
@@ -1078,8 +1170,12 @@
     const tier = depth / 5;
     room.bossName = ['The Warden of the Gate', 'Cerberus Born Again', 'The Bone Tyrant',
                      'The Iron Judge', 'Kronos Unbound'][Math.min(4, tier - 1)] || 'The Warden';
+    const spot = { x: room.w / 2, y: room.inset + 70 };
+    // The Warden is far too big to fit between the stones, so it is placed clear of
+    // them rather than being made to squeeze past.
+    pushOutOfBarriers(spot, 44);
     room.enemies.push({
-      kind: 'boss', x: room.w / 2, y: room.inset + 70, r: 38,
+      kind: 'boss', x: spot.x, y: spot.y, r: 38,
       hp: 340 + depth * 95, max: 340 + depth * 95,
       speed: 46 + depth * 1.4, dmg: 20 + depth * 1.6, color: '#e0a44e',
       atk: 0, shoot: 1.6, charging: 0, tier,
@@ -1594,12 +1690,25 @@
     p.x = clamp(p.x, in0, room.w - in0);
     p.y = clamp(p.y, in0, room.h - in0);
 
+    // Barriers stop ordinary movement, but a dash carries the hero straight
+    // through: crossing one is the whole point of the barrier, and dashT is
+    // already the state that says the body is moving as a burst rather than
+    // walking. While dashing there is no barrier collision at all; when the dash
+    // ends, ejectFromBarrier() finishes the crossing in the dash's own direction
+    // so the hero is never left standing inside the stone.
+    const dashingThrough = state.dashT > 0;
+    if (!dashingThrough) pushOutOfBarriers(p, p.r * 0.7);
+
     // timers
     state.inv = Math.max(0, state.inv - dt);
     state.swingCd = Math.max(0, state.swingCd - dt);
     state.swingT = Math.max(0, state.swingT - dt);
-    state.dashCd = Math.max(0, state.dashCd - dt);
+    // The dash has just ended: if it stopped inside a barrier, finish the crossing
+    // along the direction it was travelling rather than leaving the hero in stone.
+    const dashWas = state.dashT;
     state.dashT = Math.max(0, state.dashT - dt);
+    if (dashWas > 0 && state.dashT === 0) ejectFromBarriers(p, p.r * 0.7, p.kx, p.ky);
+    state.dashCd = Math.max(0, state.dashCd - dt);
     state.splCd = Math.max(0, state.splCd - dt);
     state.specCd = Math.max(0, state.specCd - dt);
 
@@ -1646,8 +1755,10 @@
         e.shoot -= dt * slowMul;
         const range = e.tier >= 1 ? 240 : 200;
         if (d > range) {
-          e.x += (dx / d) * e.speed * slowMul * dt;
-          e.y += (dy / d) * e.speed * slowMul * dt;
+          const dir = steerAround(e, e.r, dx / d, dy / d);
+          const dl = Math.hypot(dir.x, dir.y) || 1;
+          e.x += (dir.x / dl) * e.speed * slowMul * dt;
+          e.y += (dir.y / dl) * e.speed * slowMul * dt;
         } else if (e.shoot <= 0) {
           e.shoot = Math.max(0.7, 1.7 - e.dmg * 0.012);
           const shots = 5 + Math.min(7, Math.floor(state.depth / 2));
@@ -1661,13 +1772,21 @@
         }
         if (e.charging > 0) {
           e.charging -= dt;
+          // A charge is a shove, not a dash: it is stopped by the same stone the
+          // hero is, so a barrier is cover from the boss too.
           e.x += e.cdir.x * 430 * dt; e.y += e.cdir.y * 430 * dt;
           const wall = (room.inset || 46) + e.r * 0.35;
           e.x = clamp(e.x, wall, room.w - wall); e.y = clamp(e.y, wall, room.h - wall);
+          pushOutOfBarriers(e, e.r * 0.7);
           if (touching) damagePlayer(e.dmg * (e.weaken > 0 ? 0.6 : 1) * 1.2);
         } else if (touching) damagePlayer(e.dmg * (e.weaken > 0 ? 0.6 : 1));
       } else if (e.kind === 'wraith') {
-        if (d > 170) { e.x += (dx / d) * e.speed * slowMul * dt; e.y += (dy / d) * e.speed * slowMul * dt; }
+        if (d > 170) {
+          const dir = steerAround(e, e.r, dx / d, dy / d);
+          const dl = Math.hypot(dir.x, dir.y) || 1;
+          e.x += (dir.x / dl) * e.speed * slowMul * dt;
+          e.y += (dir.y / dl) * e.speed * slowMul * dt;
+        }
         e.shoot -= dt * slowMul;
         if (e.shoot <= 0 && d < 420) {
           e.shoot = rand(1.7, 3.1);
@@ -1677,8 +1796,10 @@
         }
         if (touching) damagePlayer(e.dmg * (e.weaken > 0 ? 0.6 : 1) * 0.6);
       } else {
-        e.x += (dx / d) * e.speed * slowMul * dt;
-        e.y += (dy / d) * e.speed * slowMul * dt;
+        const dir = steerAround(e, e.r, dx / d, dy / d);
+        const dl = Math.hypot(dir.x, dir.y) || 1;
+        e.x += (dir.x / dl) * e.speed * slowMul * dt;
+        e.y += (dir.y / dl) * e.speed * slowMul * dt;
         if (e.kind === 'brute' && e.atk <= 0 && touching) { e.atk = 0.9; damagePlayer(e.dmg * (e.weaken > 0 ? 0.6 : 1)); }
         else if (e.kind === 'shade' && touching) damagePlayer(e.dmg * (e.weaken > 0 ? 0.6 : 1) * 0.55);
       }
@@ -1689,6 +1810,8 @@
       const wall = (room.inset || 46) + e.r * 0.35;
       e.x = clamp(e.x, wall, room.w - wall);
       e.y = clamp(e.y, wall, room.h - wall);
+      // Foes have no dash and no way through stone: they route around it instead.
+      pushOutOfBarriers(e, e.r * 0.7);
     }
     room.enemies = room.enemies.filter((e) => !e.dead);
 
@@ -2236,12 +2359,17 @@
       ctx.globalAlpha = 1;
     }
 
-    // vases, then anything standing behind the player
+    // vases, then anything standing behind the player. Barriers join the same
+    // y-sorted pass, so a body behind one is drawn before it and a body in front
+    // is drawn over it — the low wall reads as something in the room rather than
+    // a sticker on the floor.
     for (const v of room.vases || []) if (v.y < p.y) drawVase(v);
+    for (const b of room.barriers || []) if (b.y < p.y) drawBarrier(b);
     const order = room.enemies.slice().sort((a, b) => a.y - b.y);
     for (const e of order) if (e.y < p.y) drawEnemy(e, t);
     drawHero(p, t);
     for (const e of order) if (e.y >= p.y) drawEnemy(e, t);
+    for (const b of room.barriers || []) if (b.y >= p.y) drawBarrier(b);
     for (const v of room.vases || []) if (v.y >= p.y) drawVase(v);
 
     for (const pr of room.projectiles) drawProjectile(pr, t);
@@ -2419,6 +2547,14 @@
     room.road.pts.forEach((pt, i) => i ? mapCtx.lineTo(X(pt.x), Y(pt.y)) : mapCtx.moveTo(X(pt.x), Y(pt.y)));
     mapCtx.stroke();
 
+    // barriers as pale blocks, so a route around the stone is visible before the
+    // hero walks into it
+    mapCtx.fillStyle = '#6b5a8f';
+    for (const b of room.barriers || []) {
+      mapCtx.fillRect(X(b.x - b.w / 2), Y(b.y - b.h / 2),
+                      Math.max(1.5, b.w * s), Math.max(1.5, b.h * s));
+    }
+
     // enemies as sparks, the gate as a ring
     mapCtx.fillStyle = '#ff8a6a';
     for (const e of room.enemies) {
@@ -2585,6 +2721,67 @@
       }
       ctx.globalAlpha = 1;
     }
+  }
+
+  // A waist-high stone block. The footprint of the block is exactly the collision
+  // box, and the body rises upward from it by `lift`, so the stone the eye sees
+  // standing there is the stone the body is stopped by. Drawn low — about a third
+  // of a pillar — with its lit top face showing, so it reads as something you
+  // cross over rather than a wall you go around. The faint rune seam is the tell
+  // that a dash will carry you through it.
+  function drawBarrier(b) {
+    const w = b.w, h = b.h;
+    const lift = 16;                     // how far the top face floats above the base
+    const baseBot = b.y + h / 2;         // the near edge of the footprint
+    const bodyTop = baseBot - (h + lift);
+    ctx.fillStyle = '#00000055';
+    ctx.beginPath();
+    ctx.ellipse(b.x + 4, b.y + 3, w * 0.6, h * 0.42, 0, 0, TAU);
+    ctx.fill();
+
+    // the near side, in shadow
+    const g = ctx.createLinearGradient(b.x - w / 2, 0, b.x + w / 2, 0);
+    g.addColorStop(0, '#171022');
+    g.addColorStop(0.4, '#33284a');
+    g.addColorStop(0.75, '#241b36');
+    g.addColorStop(1, '#120d1c');
+    ctx.fillStyle = g;
+    ctx.fillRect(b.x - w / 2, bodyTop, w, h + lift);
+    ctx.strokeStyle = '#00000099';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(b.x - w / 2, bodyTop, w, h + lift);
+
+    // mortar courses, so it reads as masonry and not a crate
+    ctx.strokeStyle = '#00000055';
+    ctx.lineWidth = 1;
+    const course = Math.max(9, h / 3);
+    for (let y = bodyTop + course; y < baseBot; y += course) {
+      ctx.beginPath();
+      ctx.moveTo(b.x - w / 2, y); ctx.lineTo(b.x + w / 2, y);
+      ctx.stroke();
+    }
+
+    // the lit top face
+    ctx.fillStyle = '#3d3055';
+    ctx.beginPath();
+    ctx.moveTo(b.x - w / 2, bodyTop);
+    ctx.lineTo(b.x - w / 2 + 4, bodyTop - 5);
+    ctx.lineTo(b.x + w / 2 - 4, bodyTop - 5);
+    ctx.lineTo(b.x + w / 2, bodyTop);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = '#4d3d6b';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // a rune seam across the face: the cue that this stone yields to a dash
+    ctx.strokeStyle = '#8f6bff66';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    const cy = bodyTop + (h + lift) / 2;
+    if (w >= h) { ctx.moveTo(b.x - w / 2 + 6, cy); ctx.lineTo(b.x + w / 2 - 6, cy); }
+    else { ctx.moveTo(b.x, bodyTop + 4); ctx.lineTo(b.x, baseBot - 4); }
+    ctx.stroke();
   }
 
   function drawPillars(t) {
@@ -3664,7 +3861,7 @@
   try {
     const best = localStorage.getItem('ue_best');
     if (best) document.getElementById('bestLine').textContent = 'Best depth so far: ' + best;
-    document.getElementById('buildLine').textContent = 'art build 12';
+    document.getElementById('buildLine').textContent = 'art build 14';
   } catch (e) {}
   refreshResume();
 
@@ -3689,6 +3886,8 @@
                     get corridor() { return corridor; }, skipCorridor: finishCorridor, weapons: WEAPONS,
                     get padActive() { return padActive; }, get shake() { return shake; },
                     get hitStop() { return hitStop; }, setPadActive, pollPadPause, frame,
+                    pushOutOfBarriers, ejectFromBarriers, insideBarrier, steerAround,
+                    newRoom, roadDistance,
                     swing, hurtEnemy, castSpell, castSpecial,
                     pressSpell, pressSpecial, readPad, PAD, padEdge,
                     gods: GODS, slots: SLOTS, shopItems: SHOP_ITEMS, offerCount: OFFER_COUNT,

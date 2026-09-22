@@ -126,7 +126,7 @@ to replay a fight.
 - `control_test.py` — the floating stick (spawn, dead zone, tracking, release),
   controller takeover, the feel of a landed hit, and the desktop keyboard path
 - `feature_test.py` — weapon mechanics, chamber size and walls, the road, the
-  minimap, the corridor
+  minimap, the corridor, and the barriers (a dash crosses one, a foe cannot)
 - `update_test.py` — caches a build, ships a new one, asserts the new one arrives
 - `stale_phone_test.py`, `clear_data_test.py` — the one-off migration off the old
   cache-first worker, for phones that installed a build before the fix
@@ -174,6 +174,13 @@ the running build is always visible.
 - `SPECIAL` / `I` / gamepad Y hurls a blade that cuts one side of the room and
   comes back to your hand, cutting the same foes again on the way home.
 - `DASH` / space / gamepad A dashes, and makes you briefly untouchable.
+- **Stone barriers.** Each chamber is broken up by waist-high stone blocks. They
+  stop you walking across, and nothing you carry gets you over them — only a dash
+  carries you through, because a dash is already the state where the body moves
+  as a burst rather than a walk, so it needs no key of its own. Foes have no dash,
+  so they cannot follow you through; they walk around the stone instead. Barriers
+  are generated from the room seed, so a resumed run rebuilds them in the same
+  places, and they are never laid on the entrance, the gate or the road.
 - `❚❚` on the HUD (or `Esc` / `P`) pauses the run. The pause screen resumes,
   opens the Gods' Market, or saves and returns to the menu. Nothing moves while
   it is up.

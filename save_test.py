@@ -62,14 +62,6 @@ with sync_playwright() as pw:
     # Read the stored snapshot back and compare the resumed run against that, not
     # against the live state: the game keeps running between these calls, so a foe
     # could land a blow and change the health it holds.
-    saved = page.evaluate("() => JSON.parse(localStorage.getItem('ue_run_v1'))")
-    expected["hp"] = saved["hp"]
-    expected["x"] = saved["px"]
-    expected["y"] = saved["py"]
-    expected["kills"] = saved["kills"]
-    expected["obols"] = saved["obols"]
-    expected["total"] = len(saved["enemies"])
-
     check("the run is written to storage", page.evaluate("() => window.__game.hasSave()"), True)
 
     # Reload the page entirely, the way reopening the app would.
@@ -77,6 +69,18 @@ with sync_playwright() as pw:
     page.wait_for_timeout(300)
     check("the menu now offers to continue",
           page.evaluate("() => !document.getElementById('resumeBtn').hidden"), True)
+
+    # Read the snapshot back *after* the reload, not before: leaving the page fires
+    # the pagehide autosave, so the reload replaces whatever was stored a moment
+    # earlier. Comparing against the older value made this check fail whenever a
+    # foe landed a blow in that window.
+    saved = page.evaluate("() => JSON.parse(localStorage.getItem('ue_run_v1'))")
+    expected["hp"] = saved["hp"]
+    expected["x"] = saved["px"]
+    expected["y"] = saved["py"]
+    expected["kills"] = saved["kills"]
+    expected["obols"] = saved["obols"]
+    expected["total"] = len(saved["enemies"])
 
     page.click("#resumeBtn")
     page.wait_for_timeout(400)
@@ -116,6 +120,7 @@ with sync_playwright() as pw:
       return { torches: r.torches.length, pillars: r.pillars.length,
                vases: r.vases.length, bones: r.bones.length, seed: r.seed,
                pillarSpots: r.pillars.map((p) => [Math.round(p.x), Math.round(p.y)]),
+               barrierSpots: (r.barriers || []).map((b) => [Math.round(b.x), Math.round(b.y), b.w, b.h]),
                road: r.road.pts.map((p) => [Math.round(p.x), Math.round(p.y)]) };
     }""")
     page.reload(wait_until="load")
@@ -127,6 +132,7 @@ with sync_playwright() as pw:
       return { torches: r.torches.length, pillars: r.pillars.length,
                vases: r.vases.length, bones: r.bones.length, seed: r.seed,
                pillarSpots: r.pillars.map((p) => [Math.round(p.x), Math.round(p.y)]),
+               barrierSpots: (r.barriers || []).map((b) => [Math.round(b.x), Math.round(b.y), b.w, b.h]),
                road: r.road.pts.map((p) => [Math.round(p.x), Math.round(p.y)]) };
     }""")
     check("the resumed chamber is rebuilt stone for stone",
