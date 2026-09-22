@@ -414,8 +414,10 @@ with sync_playwright() as pw:
       const readout = document.getElementById('shopObols').textContent;
       const price = Number(rows[0].querySelector('.price').textContent.replace(/\\D/g, ''));
       rows[0].click();
+      const god = g.gods.find((x) => x.id === s.pendingPower);
       return { shown, readout, price, obols: s.obols, mode: g.mode,
                pending: s.pendingPower,
+               moves: god ? Object.keys(god.variants).length : null,
                slots: document.querySelectorAll('#slotsBody .slot').length,
                wanted: window.__game.slots.length,
                shopHidden: document.getElementById('shop').hidden };
@@ -423,8 +425,8 @@ with sync_playwright() as pw:
     check("the market shows every god", market["shown"] == roster["count"], market["shown"])
     check("the market shows the purse", "500" in market["readout"], market["readout"])
     check("buying a god debits its price", market["obols"] == 500 - market["price"], market)
-    check("buying a god opens the slot chooser, one card per move",
-          market["mode"] == "slot" and market["slots"] == market["wanted"] and
+    check("buying a god opens the slot chooser, one card per move it grants",
+          market["mode"] == "slot" and market["slots"] == market["moves"] and
           market["shopHidden"] and market["pending"] is not None, market)
 
     # --- a purse too thin to buy: the click must be refused, not go negative

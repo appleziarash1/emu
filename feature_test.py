@@ -144,12 +144,14 @@ with sync_playwright() as pw:
       const held = g.state.weapon.id;
       document.querySelector('#cardsBody .card').click();
       const slots = [...document.querySelectorAll('#slotsBody .slot')];
+      const god = g.gods.find((x) => x.id === g.state.pendingPower);
       return { held, mode: g.mode, slots: slots.length,
+               moves: god ? Object.keys(god.variants).length : null,
                suggested: slots.filter((s) => s.querySelector('.tag')).length,
                after: g.state.weapon.id };
     }""")
-    check("picking a god opens the slot chooser",
-          picked["mode"] == "slot" and picked["slots"] == 4, picked)
+    check("picking a god opens the chooser, one card per move it grants",
+          picked["mode"] == "slot" and picked["slots"] == picked["moves"], picked)
     check("the chooser flags a suggested slot", picked["suggested"] >= 1, picked)
 
     bound = page.evaluate("""() => {

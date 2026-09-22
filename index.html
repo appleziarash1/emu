@@ -128,6 +128,15 @@
   #btnHit  { right: 84px; bottom: calc(env(safe-area-inset-bottom) + 24px); width: 96px; height: 96px; font-size: 15px; }
   #btnSpec { right: 150px; bottom: calc(env(safe-area-inset-bottom) + 108px); width: 66px; height: 66px; font-size: 11px; }
   #btnSpell { right: 66px; bottom: calc(env(safe-area-inset-bottom) + 134px); width: 70px; height: 70px; font-size: 11px; }
+  /* The God Gauge: how close the Call is to being spendable. */
+  .bar.gauge { background: #ffffff14; }
+  .bar.gauge i { background: linear-gradient(90deg, #7fd7ff, #ffd479); width: 0%; }
+  .bar.gauge.full i { box-shadow: 0 0 10px #ffd479aa; }
+  /* The Call sits directly above the spell in the same column, so the cluster
+     stays a thumb-arc rather than a scatter of buttons. */
+  #btnCall { right: 66px; bottom: calc(env(safe-area-inset-bottom) + 208px); width: 70px; height: 70px; font-size: 11px; }
+  #btnCall.ready { border-color: #ffd479; color: #ffe9a8; box-shadow: 0 0 14px #ffd47966; }
+
   .tbtn.cool { opacity: .42; }
   .tbtn.cool::after { content: ''; position: absolute; inset: -2px; border-radius: 50%;
           border: 2px solid #7fd4ffcc; clip-path: inset(0 0 var(--cool, 0%) 0); }
@@ -248,6 +257,7 @@
     </div>
     <div class="hud-top" style="top: calc(env(safe-area-inset-top) + 32px)">
       <div class="bar xp" style="height:8px"><i id="xpFill"></i></div>
+    <div class="bar gauge" style="height:6px"><i id="gaugeFill"></i></div>
     </div>
     <div class="hud-bottom">
       <span id="boonList">no boons</span>
@@ -257,7 +267,7 @@
       <canvas id="mapCanvas" width="168" height="168"></canvas>
       <div class="mapLabel">gate</div>
     </div>
-    <div id="keyHint">WASD move &middot; J strike &middot; U spell &middot; I special &middot; Space dash</div>
+    <div id="keyHint">WASD move &middot; J strike &middot; U spell &middot; I special &middot; Space dash &middot; O call</div>
     <button id="saveBtn" type="button">SAVE</button>
     <button id="pauseBtn" type="button" aria-label="Pause">❚❚</button>
   </div>
@@ -267,6 +277,7 @@
   <button class="tbtn" id="btnDash" type="button">DASH</button>
   <button class="tbtn" id="btnSpec" type="button">SPECIAL</button>
   <button class="tbtn" id="btnSpell" type="button">SPELL</button>
+  <button class="tbtn" id="btnCall" type="button">CALL</button>
   <button class="tbtn" id="btnHit" type="button">STRIKE</button>
 
   <div id="toast"></div>
@@ -306,6 +317,13 @@
     <p class="sub" id="shopObols" style="font-size:13px">You carry <b>0</b> obols.</p>
     <div id="shopBody"></div>
     <div class="row"><button class="btn ghost" id="shopBack" type="button">Back</button></div>
+  </div>
+
+
+  <div class="overlay" id="pom" hidden>
+    <h1 style="font-size:24px" id="pomTitle">Pom of Power</h1>
+    <p class="sub" id="pomSub"></p>
+    <div id="pomBody"></div>
   </div>
 
   <div class="overlay" id="menu">
@@ -443,12 +461,13 @@
   const held = { hit: false, dash: false, spell: false, special: false };
   // A press can land while the sim is frozen for hit stop. Holding it as a
   // short-lived flag means a tap is never swallowed by a frame that was skipped.
-  const pressBuf = { hit: 0, dash: 0, spell: 0, special: 0 };
+  const pressBuf = { hit: 0, dash: 0, spell: 0, special: 0, call: 0 };
   const BUFFER = 0.14;
   function pressHit() { pressBuf.hit = BUFFER; }
   function pressDash() { pressBuf.dash = BUFFER; }
   function pressSpell() { pressBuf.spell = BUFFER; }
   function pressSpecial() { pressBuf.special = BUFFER; }
+  function pressCall() { pressBuf.call = BUFFER; }
 
   // Floating joystick. The stick has no fixed home: it appears under the thumb
   // wherever the left half of the screen is touched, so there is nothing to
@@ -548,7 +567,13 @@
     const el = document.getElementById(id);
     const down = (e) => {
       e.preventDefault();
-      if (!held[key]) (key === 'hit' ? pressHit : pressDash)();
+      if (!held[key]) {
+        if (key === 'hit') pressHit();
+        else if (key === 'dash') pressDash();
+        else if (key === 'spell') pressSpell();
+        else if (key === 'special') pressSpecial();
+        else if (key === 'call') pressCall();
+      }
       held[key] = true; el.classList.add('press');
     };
     const up = (e) => { e.preventDefault(); held[key] = false; el.classList.remove('press'); };
@@ -563,6 +588,7 @@
   bindButton('btnDash', 'dash');
   bindButton('btnSpell', 'spell');
   bindButton('btnSpec', 'special');
+  bindButton('btnCall', 'call');
 
   const keys = {};
   window.addEventListener('keydown', (e) => {
@@ -572,6 +598,7 @@
       if (k === ' ' || k === 'k') pressDash();
       if (k === 'u' || k === 'q') pressSpell();
       if (k === 'i' || k === 'e') pressSpecial();
+      if (k === 'o' || k === 'r') pressCall();
     }
     keys[k] = true;
     if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
@@ -770,6 +797,7 @@
     { id: 'special', label: 'Special', blurb: 'your SPECIAL', key: 'special' },
     { id: 'spell',   label: 'Spell',   blurb: 'your SPELL',   key: 'spell' },
     { id: 'dash',    label: 'Dash',    blurb: 'your DASH',    key: 'dash' },
+    { id: 'call',    label: 'Call',    blurb: 'your CALL',    key: 'call' },
   ];
 
   // How many gods a cleared chamber offers. Hades hands you a fistful rather
@@ -1034,6 +1062,49 @@
       },
     },
   ];
+
+
+  // The Call, per the guide: each god answers in person. Hermes and Chaos give no
+  // Aid — the guide is explicit about Hermes — so they are simply not offered
+  // here, which the chooser already handles for a missing variant.
+  const CALL_RARITY = 'rare';
+  const CALL_ARGS = {
+    zeus:      { dmg: 1.10 },
+    poseidon:  { dmg: 1.08, knock: 80 },
+    athena:    { shield: 2 },
+    aphrodite: { hp: 20 },
+    ares:      { dmg: 1.12 },
+    dionysus:  { hp: 15 },
+    demeter:   { cd: 0.90 },
+    artemis:   { dmg: 1.10 },
+    hephaestus:{ dmg: 1.10 },
+  };
+  const CALL_DESC = {
+    zeus: 'The sky answers: the bolt falls on everything within reach.',
+    poseidon: 'The tide answers: every foe is flung back by the wave.',
+    athena: 'The aegis answers: you are shielded as the burst lands.',
+    aphrodite: 'Love answers: the burst mends you as it charms the room.',
+    ares: 'War answers: the whole chamber bleeds at once.',
+    dionysus: 'The revel answers: every foe is left reeling in its cups.',
+    demeter: 'Winter answers: the chamber is chilled to a standstill.',
+    artemis: 'The hunt answers: the shot finds every foe in the room.',
+    hephaestus: 'The forge answers: the burst lands like a hammer.',
+  };
+  for (const g of GODS) {
+    const a = CALL_ARGS[g.id];
+    if (!a) continue;
+    g.variants.call = {
+      name: g.god + "'s Aid", rarity: CALL_RARITY, desc: CALL_DESC[g.id],
+      apply: (s) => {
+        if (a.dmg) s.dmg *= a.dmg;
+        if (a.knock) s.knock += a.knock;
+        if (a.shield) { s.shieldMax += a.shield; s.shield = s.shieldMax; }
+        if (a.hp) { s.maxHp += a.hp; s.hp += a.hp; }
+        if (a.cd) s.splCdMax *= a.cd;
+      },
+      flags: {},
+    };
+  }
 
   // The shop's shelf: the same gods, priced by how much they bend a run.
   const SHOP_ITEMS = GODS.map((g) => ({
@@ -1379,6 +1450,15 @@
     { id: 'jury',         name: 'Jury Summons',          max: 3, blurb: 'More foes in every chamber.' },
     { id: 'calisthenics', name: 'Calisthenics',          max: 3, blurb: 'Bosses have more life.' },
     { id: 'tight',        name: 'Tight Deadline',        max: 3, blurb: 'Foes are faster.' },
+    { id: 'benefit',      name: 'Benefits Package',      max: 2, blurb: 'Foes carry shields.' },
+    { id: 'middle',       name: 'Middle Management',     max: 2, blurb: 'Champions appear earlier.' },
+    { id: 'forced',       name: 'Forced Overtime',       max: 2, blurb: 'Every foe moves quicker.' },
+    { id: 'approval',     name: 'Approval Process',      max: 2, blurb: 'A chamber offers one fewer god.' },
+    { id: 'personal',     name: 'Personal Liability',    max: 1, blurb: 'A single blow ends the run.' },
+    { id: 'routines',     name: 'Routine Inspection',    max: 2, blurb: 'You earn less from every foe.' },
+    { id: 'heightened',   name: 'Heightened Security',   max: 2, blurb: 'Traps bite harder.' },
+    { id: 'damage',       name: 'Damage Control',        max: 2, blurb: 'Every blow lands for less.' },
+    { id: 'extreme',      name: 'Extreme Measures',      max: 2, blurb: 'The bosses fight with more life.' },
   ];
 
   const HEAT_KEY = 'ue_heat_v1';
@@ -1396,12 +1476,18 @@
   }
   function pactMod() {
     return {
-      foeDmgMul: 1 + pactRank('hardLabour') * 0.18,
+      foeDmgMul: (1 + pactRank('hardLabour') * 0.18) * (1 + pactRank('forced') * 0.1),
       startHpMul: 1 - pactRank('lasting') * 0.15,
       shopMul: 1 + pactRank('convenience') * 0.25,
-      foeCountAdd: pactRank('jury'),
-      bossHpMul: 1 + pactRank('calisthenics') * 0.22,
-      foeSpeedMul: 1 + pactRank('tight') * 0.12,
+      foeCountAdd: pactRank('jury') + pactRank('benefit'),
+      bossHpMul: 1 + pactRank('calisthenics') * 0.22 + pactRank('extreme') * 0.25,
+      foeSpeedMul: 1 + pactRank('tight') * 0.12 + pactRank('middle') * 0.08,
+      shieldStart: pactRank('benefit'),
+      oneShot: pactRank('personal') > 0,
+      offerLess: pactRank('approval'),
+      obolLess: pactRank('routines') * 25,
+      hazardMore: pactRank('heightened') * 0.25,
+      dmgLess: 1 - pactRank('damage') * 0.1,
     };
   }
 
@@ -1461,8 +1547,10 @@
       swingT: 0, swingCd: 0, weapon,
       // One power per slot. se[slot] holds that slot's effect flags, so a Zeus
       // bound to Spell cannot switch on an Attack effect.
-      slots: { attack: null, special: null, spell: null, dash: null },
-      se: { attack: {}, special: {}, spell: {}, dash: {} },
+      slots: { attack: null, special: null, spell: null, dash: null, call: null },
+      se: { attack: {}, special: {}, spell: {}, dash: {}, call: {} },
+      gauge: 0, gaugeMul: 1, takenDuos: {}, pomCount: 0, pomBonus: 0,
+      oneShot: false, offerLess: 0, obolLess: 0, hazardMore: 0, dmgLess: 1,
       xp: 0, level: 1, obols: 0,
       depth: 1, kills: 0, boons: [], takenIds: {}, offer: null, tAcc: 0, bossShopDepth: 0, pendingRarity: null,
       // The permanent choices ride on the run so a resumed descent keeps the
@@ -2106,6 +2194,11 @@
     e.hp -= amount;
     e.burn = 0.12;
     e.hurt = 0.12;
+    gainGauge(amount * 0.10);
+    curseSynergy(e, amount);
+    if (state.legendShield && Math.random() < 0.05) {
+      state.shield = Math.min(state.shieldMax, state.shield + 1);
+    }
     sfx('hit');
     floater(e.x + rand(-6, 6), e.y - e.r, (crit ? '✦' : '') + Math.round(amount), crit);
     if (state.slow) e.slowed = 1.6;
@@ -2250,6 +2343,7 @@
     }
     state.hp -= amount;
     state.inv = 0.75;
+    gainGauge(amount * 0.35);
     sfx('hurt');
     floater(state.player.x, state.player.y - 22, '-' + Math.round(amount), false);
     if (state.hp <= 0) { state.hp = 0; die(); }
@@ -2470,7 +2564,7 @@
     e.x += (dir.x / dl) * e.speed * (mul == null ? 1 : mul) * slowMul * dt;
     e.y += (dir.y / dl) * e.speed * (mul == null ? 1 : mul) * slowMul * dt;
   }
-  const hurtMul = (e) => (e.weaken > 0 ? 0.6 : 1);
+  const hurtMul = (e) => (e.weaken > 0 ? 0.6 : (e.curses && e.curses.weak ? 0.6 : 1));
 
   function foeAI(e, dt, slowMul, dx, dy, d, touching) {
     switch (e.kind) {
@@ -2853,6 +2947,7 @@
     pressBuf.dash = Math.max(0, pressBuf.dash - dt);
     pressBuf.spell = Math.max(0, pressBuf.spell - dt);
     pressBuf.special = Math.max(0, pressBuf.special - dt);
+    pressBuf.call = Math.max(0, pressBuf.call - dt);
 
     const wantDash = held.dash || kb.dash || pressBuf.dash > 0 || padDashNow;
     if (wantDash && state.dashCd <= 0 && (ml > 0.05 || p.faceY)) {
@@ -2872,6 +2967,8 @@
     if (wantSpell) { pressBuf.spell = 0; castSpell(); }
     const wantSpecial = held.special || pressBuf.special > 0 || padSpecialNow;
     if (wantSpecial) { pressBuf.special = 0; castSpecial(); }
+    const wantCall = held.call || pressBuf.call > 0;
+    if (wantCall) { pressBuf.call = 0; castCall(); }
 
     // enemies
     for (const e of room.enemies) {
@@ -2879,6 +2976,7 @@
       e.burn = Math.max(0, (e.burn || 0) - dt);
       e.slowed = Math.max(0, (e.slowed || 0) - dt);
       e.weaken = Math.max(0, (e.weaken || 0) - dt);
+      tickCurses(e, dt);
       if (e.weakenT) e.weakenT = Math.max(0, e.weakenT - dt);
       if (e.burning > 0) {
         e.burning -= dt;
@@ -2924,7 +3022,8 @@
     for (const pr of room.projectiles) {
       // impact rings, bursts, waves and debris only age; they are drawn, not simulated
       if (pr.kind === 'spark' || pr.kind === 'blast' || pr.kind === 'impact' ||
-          pr.kind === 'nova' || pr.kind === 'wave') { pr.t -= dt; continue; }
+          pr.kind === 'nova' || pr.kind === 'wave' || pr.kind === 'curse' ||
+          pr.kind === 'callRing') { pr.t -= dt; continue; }
       if (pr.kind === 'debris') {
         pr.t -= dt;
         pr.x += pr.vx * dt; pr.y += pr.vy * dt;
@@ -3088,7 +3187,7 @@
     // shut, so a thrown blade in flight cannot open the room a beat early.
     const inert = (x) => x.kind === 'spark' || x.kind === 'blast' || x.kind === 'impact' ||
                          x.kind === 'wave' || x.kind === 'debris' || x.kind === 'arrow' ||
-                         x.kind === 'chakram';
+                         x.kind === 'chakram' || x.kind === 'curse' || x.kind === 'callRing';
     if (!room.cleared && room.enemies.length === 0 && room.projectiles.every(inert)) {
       room.cleared = true;
       if (room.isBoss) { toast('The gate stands open'); }
@@ -3137,6 +3236,15 @@
       'Depth ' + state.depth + (room.isBoss ? ' · BOSS' : '');
     document.getElementById('goldChip').textContent = state.obols + ' obols' +
       (state.shield > 0 ? ' · shield ' + state.shield : '');
+    const gEl = document.getElementById('gaugeFill');
+    if (gEl) {
+      const pct = Math.min(100, ((state.gauge || 0) / CALL_GAUGE_MAX) * 100);
+      gEl.style.width = pct + '%';
+      const bar = gEl.parentElement;
+      if (bar) bar.classList.toggle('full', callReady());
+      const btn = document.getElementById('btnCall');
+      if (btn) btn.classList.toggle('ready', callReady());
+    }
     document.getElementById('boonList').textContent =
       SLOTS.map((s) => {
         const h = state.slots[s.id];
@@ -3203,11 +3311,16 @@
     const pool = GODS.slice();
     const out = [];
     const rarities = rollRaritySet(OFFER_COUNT, state.depth);
+    // A Pom can stand in for one god once a power is bound: it is the reward the
+    // guide gives for deepening a build rather than widening it.
+    const pomAllowed = pomTargets().length > 0 && Math.random() < 0.25;
+    const want = pomAllowed ? OFFER_COUNT - 1 : OFFER_COUNT;
     let i = 0;
-    while (out.length < OFFER_COUNT && pool.length) {
+    while (out.length < want && pool.length) {
       const g = pool.splice(randi(0, pool.length - 1), 1)[0];
       out.push(offerEntry(g.id, rarities[i++] || rollRarity(state.depth)));
     }
+    if (pomAllowed) out.push({ pom: true, rarity: 'normal' });
     return out;
   }
 
@@ -3229,10 +3342,41 @@
                        .filter((x) => x.god);
     const body = document.getElementById('cardsBody');
     body.innerHTML = '';
+    const duos = availableDuos();
+    const legend = availableLegend();
+    for (const d of duos.slice(0, 1)) {
+      const el = document.createElement('button');
+      el.className = 'card duo';
+      el.type = 'button';
+      el.innerHTML = '<span class="tag duo">DUO</span><em>DUO BOON</em>' +
+        '<b>' + d.name + '</b><span>A pair answered: two gods in one power.</span>';
+      el.addEventListener('click', () => { takeSpecial(d.name); closeRewardToPlay(); });
+      body.appendChild(el);
+    }
+    if (legend) {
+      const el = document.createElement('button');
+      el.className = 'card legendary';
+      el.type = 'button';
+      el.innerHTML = '<span class="tag legendary">LEGENDARY</span><em>LEGENDARY BOON</em>' +
+        '<b>' + legend.name + '</b><span>The god you bound twice answers in kind.</span>';
+      el.addEventListener('click', () => { takeSpecial(legend.name); closeRewardToPlay(); });
+      body.appendChild(el);
+    }
     document.getElementById('cardsTitle').textContent =
       'Depth ' + state.depth + ' cleared — choose one';
     document.getElementById('cardsSub').textContent =
       'Four gods offer a favour. Each card shows its rarity. Take one, then decide which move it empowers.';
+    const poms = offers.filter((o) => o && o.pom);
+    for (const entry of poms) {
+      const el = document.createElement('button');
+      el.className = 'card pom';
+      el.type = 'button';
+      el.innerHTML = '<span class="tag normal">POM</span>' +
+        '<em>POM OF POWER</em><b>Deepen a power</b>' +
+        '<span>Raise the level of a move you already bound.</span>';
+      el.addEventListener('click', openPom);
+      body.appendChild(el);
+    }
     for (const { entry, god } of pick) {
       const r = RARITY[offerRarityOf(entry)];
       const el = document.createElement('button');
@@ -3241,7 +3385,7 @@
       el.type = 'button';
       // The card names the god, its rarity and its strongest move, so the choice
       // reads as "Zeus, Rare, probably Storm Blade" rather than a bare stat line.
-      const best = SLOTS.slice().sort((a, b) =>
+      const best = SLOTS.filter((sl) => god.variants[sl.id]).sort((a, b) =>
         RARITY_ORDER.indexOf(god.variants[b.id].rarity) -
         RARITY_ORDER.indexOf(god.variants[a.id].rarity))[0];
       el.innerHTML = '<span class="tag ' + entry.rarity + '">' + r.label.toUpperCase() + '</span>' +
@@ -3274,6 +3418,7 @@
       'Bind it to one move. The card is offered at ' + r.label + ' rarity — all four are ' + r.label + '.';
     for (const slot of SLOTS) {
       const v = g.variants[slot.id];
+      if (!v) continue;
       const held = state.slots[slot.id];
       const el = document.createElement('button');
       el.className = 'slot' + (held ? ' eq' : '');
@@ -3321,7 +3466,7 @@
     toast(g.god + ' · ' + v.name + ' [' + RARITY[r].label + '] → ' + slotLabels[slotId]);
   }
 
-  const slotLabels = { attack: 'Strike', special: 'Special', spell: 'Spell', dash: 'Dash' };
+  const slotLabels = { attack: 'Strike', special: 'Special', spell: 'Spell', dash: 'Dash', call: 'Call' };
 
   // -------------------------------------------------------------- gods' market
   // Mid-run only, the way Charon's shop works: the obols you are carrying are
@@ -3420,7 +3565,9 @@
                        'aspectId', 'keepsake', 'heat', 'bloodEarned', 'bloodBonus', 'bloodAdd',
                        'darknessEarned', 'obolMul', 'healAdd', 'shopMul', 'foeDmgMul',
                        'foeCountAdd', 'bossHpMul', 'foeSpeedMul', 'aspectCdMul', 'aspectShots',
-                       'aspectShield', 'aspectHpMul'];
+                       'aspectShield', 'aspectHpMul',
+                       'gauge', 'gaugeMul', 'takenDuos', 'pomCount', 'pomBonus',
+                       'oneShot', 'offerLess', 'obolLess', 'hazardMore', 'dmgLess'];
   // A save every few seconds, plus one at the moment the app is hidden, means a
   // run is at most a couple of blows old. Boon effects live in the saved numbers,
   // so nothing has to be re-applied on the way back in.
@@ -5432,6 +5579,34 @@
       ctx.globalAlpha = 1;
       return;
     }
+    if (pr.kind === 'curse') {
+      const k = clamp(pr.t / 0.3, 0, 1);
+      ctx.globalAlpha = k;
+      ctx.strokeStyle = pr.color || '#ffd479';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(pr.x, pr.y, pr.r * (0.6 + (1 - k) * 0.9), 0, TAU);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      return;
+    }
+    if (pr.kind === 'callRing') {
+      const k = clamp(pr.t / 0.5, 0, 1);
+      ctx.globalAlpha = k * 0.85;
+      ctx.strokeStyle = '#ffe9a8';
+      ctx.lineWidth = 6 * k + 1;
+      ctx.beginPath();
+      ctx.arc(pr.x, pr.y, pr.r * (0.4 + (1 - k) * 0.7), 0, TAU);
+      ctx.stroke();
+      ctx.globalAlpha = k * 0.4;
+      ctx.strokeStyle = '#7fd7ff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(pr.x, pr.y, pr.r * (0.3 + (1 - k) * 0.5), 0, TAU);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      return;
+    }
     if (pr.kind === 'spark') {
       const k = clamp(pr.t / 0.16, 0, 1);
       ctx.globalAlpha = k;
@@ -5621,7 +5796,7 @@
       document.body.classList.add('kb');
       document.getElementById('keyHint').classList.add('on');
     } else {
-      for (const id of ['btnHit', 'btnDash', 'btnSpell', 'btnSpec']) {
+      for (const id of ['btnHit', 'btnDash', 'btnSpell', 'btnSpec', 'btnCall']) {
         document.getElementById(id).classList.add('on');
       }
     }
@@ -5631,7 +5806,7 @@
     touchZone.classList.remove('on');
     document.body.classList.remove('kb');
     document.getElementById('keyHint').classList.remove('on');
-    for (const id of ['btnHit', 'btnDash', 'btnSpell', 'btnSpec']) {
+    for (const id of ['btnHit', 'btnDash', 'btnSpell', 'btnSpec', 'btnCall']) {
       document.getElementById(id).classList.remove('on');
     }
   }
@@ -5640,6 +5815,13 @@
   // so the player can tell "not yet" from "broken".
   function refreshAbilityButtons() {
     if (!state) return;
+    const callEl = document.getElementById('btnCall');
+    if (callEl) {
+      const cooling = !callReady();
+      callEl.classList.toggle('cool', cooling);
+      callEl.style.setProperty('--cool',
+        Math.round((1 - (state.gauge || 0) / CALL_GAUGE_MAX) * 100) + '%');
+    }
     const pairs = [['btnSpell', state.splCd, state.splCdMax],
                    ['btnSpec', state.specCd, state.specCdMax]];
     for (const [id, cd, max] of pairs) {
@@ -5798,7 +5980,7 @@
   try {
     const best = localStorage.getItem('ue_best');
     if (best) document.getElementById('bestLine').textContent = 'Best depth so far: ' + best;
-    document.getElementById('buildLine').textContent = 'art build 16';
+    document.getElementById('buildLine').textContent = 'art build 17';
   } catch (e) {}
   refreshResume();
   initMeta();
@@ -5818,6 +6000,346 @@
 
   // Face south-east at boot so the canvas shows something before the first move.
   requestAnimationFrame((t) => { lastT = t; frame(t); });
+  // ============================================================ curses (10)
+  // One signature curse per god, as the guide lists them. A curse rides on the
+  // foe rather than the hero, so several run at once and the foe can show what
+  // is actually on it.
+  const CURSES = {
+    doom:     { god: 'Ares',      label: 'Doom',     color: '#e2564d', dur: 1.6,
+                blurb: 'A delayed blow: the marked foe takes a second hit after a beat.' },
+    weak:     { god: 'Aphrodite', label: 'Weak',     color: '#f07ab0', dur: 4,
+                blurb: 'The foe hits for far less while it lasts.' },
+    hangover: { god: 'Dionysus',  label: 'Hangover', color: '#8fd44a', dur: 4,
+                blurb: 'Damage over time, and the stacks pile up.' },
+    chill:    { god: 'Demeter',   label: 'Chill',    color: '#7fd7ff', dur: 3,
+                blurb: 'Slows the foe; heavy stacks nearly freeze it.' },
+    jolted:   { god: 'Zeus',      label: 'Jolted',   color: '#ffd23f', dur: 5,
+                blurb: 'The foe takes lightning damage whenever it strikes.' },
+    rupture:  { god: 'Poseidon',  label: 'Rupture',  color: '#4fc3f7', dur: 4,
+                blurb: 'The foe is hurt whenever it is knocked about.' },
+    marked:   { god: 'Artemis',   label: 'Marked',   color: '#c0f04a', dur: 5,
+                blurb: 'A shared wound: what it takes is echoed to its kin.' },
+  };
+  const CURSE_IDS = Object.keys(CURSES);
+
+  // Curses stack by intensity rather than by count, so a second Hangover
+  // deepens the first instead of adding a parallel timer.
+  function applyCurse(e, id, power) {
+    if (!e || e.dead || !CURSES[id]) return;
+    e.curses = e.curses || {};
+    const c = e.curses[id] || { t: 0, stacks: 0, power: 1 };
+    c.t = Math.max(c.t, CURSES[id].dur * (state.legendHang && id === 'hangover' ? 3 : 1));
+    c.stacks = Math.min(8, c.stacks + 1);
+    c.power = Math.max(c.power, power || 1);
+    e.curses[id] = c;
+    if (id === 'chill') e.slowed = Math.max(e.slowed || 0, 0.6 + c.stacks * 0.25);
+    room.projectiles.push({ x: e.x, y: e.y, t: 0.3, kind: 'curse', r: e.r + 10,
+                            color: CURSES[id].color });
+  }
+
+  // The per-frame curse tick. Damage-over-time is scaled off the run's own
+  // damage so a curse stays relevant late, and Doom lands its delayed blow when
+  // its beat runs out — that beat is the whole reason to bind Ares.
+  function tickCurses(e, dt) {
+    if (!e.curses) return;
+    for (const id of CURSE_IDS) {
+      const c = e.curses[id];
+      if (!c || c.t <= 0) continue;
+      c.t -= dt;
+      if (id === 'hangover') {
+        e.burn = 0.12;
+        const rate = state.duoNausea ? 1.9 : 1.3;
+        hurtEnemy(e, state.dmg * 0.12 * c.stacks * c.power * rate * dt, null);
+      } else if (id === 'chill') {
+        e.slowed = Math.max(e.slowed || 0, 0.5 + c.stacks * 0.22);
+        if (state.legendFreeze && c.stacks >= 5) e.slowed = Math.max(e.slowed || 0, 3);
+      }
+      if (c.t <= 0) {
+        if (id === 'doom') {
+          // The delayed blow lands at the end of the beat, which is what makes
+          // Doom read as a wound opening late rather than a second hit.
+          hurtEnemy(e, state.dmg * 0.9 * c.stacks * c.power *
+                       (state.legendDoom ? 2 : 1), null, true);
+          room.projectiles.push({ x: e.x, y: e.y, t: 0.3, kind: 'impact', r: e.r + 14, big: true });
+        }
+        delete e.curses[id];
+      }
+    }
+    if (e.curses && !Object.keys(e.curses).length) e.curses = null;
+  }
+
+  // Jolted answers the foe's own attack; it is called at the foe's wind-up.
+  function curseOnAttack(e) {
+    if (!e || !e.curses || !e.curses.jolted) return;
+    const c = e.curses.jolted;
+    hurtEnemy(e, state.dmg * 0.6 * c.power * (state.legendSplit ? 1.6 : 1), null);
+    room.projectiles.push({ x: e.x, y: e.y, t: 0.2, kind: 'spark' });
+    c.t = 0;
+  }
+
+  // Rupture answers knockback: the shove itself is the damage.
+  function curseOnKnock(e, power) {
+    if (!e || !e.curses || !e.curses.rupture) return;
+    const c = e.curses.rupture;
+    hurtEnemy(e, state.dmg * 0.45 * c.stacks * (power || c.power) *
+                 (state.legendWave ? 1.7 : 1), null);
+  }
+
+  // ------------------------------------------------------- duo and legendary
+  // The guide's 28 duo boons, one per pair of the eight Olympians that share
+  // them. A duo is only offered once both parents are bound, which is what makes
+  // it a build decision rather than another card. Each carries an `apply` so it
+  // always moves a number; the notable ones also set a flag the sim reads.
+  const DUOS = [
+    { a: 'aphrodite', b: 'ares',      name: 'Curse of Longing',    apply: (s) => { s.dmg *= 1.08; } },
+    { a: 'aphrodite', b: 'artemis',   name: 'Heart Rend',          apply: (s) => { s.dmg *= 1.14; } },
+    { a: 'aphrodite', b: 'athena',    name: 'Parting Shot',        apply: (s) => { s.reach *= 1.1; } },
+    { a: 'aphrodite', b: 'demeter',   name: 'Cold Embrace',        apply: (s) => { s.dmg *= 1.08; s.reach *= 1.08; } },
+    { a: 'aphrodite', b: 'dionysus',  name: 'Low Tolerance',       apply: (s) => { s.dmg *= 1.1; } },
+    { a: 'aphrodite', b: 'poseidon',  name: 'Sweet Nectar',        apply: (s) => { s.pomBonus = (s.pomBonus || 0) + 1; } },
+    { a: 'aphrodite', b: 'zeus',      name: 'Smoldering Air',      apply: (s) => { s.gaugeMul = (s.gaugeMul || 1) + 1.2; } },
+    { a: 'ares',      b: 'artemis',   name: 'Hunting Blades',      apply: (s) => { s.splCdMax *= 0.85; } },
+    { a: 'ares',      b: 'athena',    name: 'Merciful End',        apply: (s) => { s.dmg *= 1.12; } },
+    { a: 'ares',      b: 'demeter',   name: 'Freezing Vortex',     apply: (s) => { s.dmg *= 1.1; } },
+    { a: 'ares',      b: 'dionysus',  name: 'Curse of Nausea',     apply: (s) => { s.duoNausea = true; s.dmg *= 1.05; } },
+    { a: 'ares',      b: 'poseidon',  name: 'Curse of Drowning',   apply: (s) => { s.knock += 90; s.dmg *= 1.05; } },
+    { a: 'ares',      b: 'zeus',      name: 'Vengeful Mood',       apply: (s) => { s.dmg *= 1.1; } },
+    { a: 'artemis',   b: 'athena',    name: 'Deadly Reversal',     apply: (s) => { s.dmg *= 1.12; } },
+    { a: 'artemis',   b: 'demeter',   name: 'Crystal Clarity',     apply: (s) => { s.splCdMax *= 0.9; s.dmg *= 1.08; } },
+    { a: 'artemis',   b: 'dionysus',  name: 'Splitting Headache',  apply: (s) => { s.dmg *= 1.12; } },
+    { a: 'artemis',   b: 'poseidon',  name: 'Mirage Shot',         apply: (s) => { s.dmg *= 1.1; } },
+    { a: 'artemis',   b: 'zeus',      name: 'Lightning Rod',       apply: (s) => { s.splCdMax *= 0.88; } },
+    { a: 'athena',    b: 'demeter',   name: 'Stubborn Roots',      apply: (s) => { s.healAdd = (s.healAdd || 0) + 2; } },
+    { a: 'athena',    b: 'dionysus',  name: 'Calculated Risk',     apply: (s) => { s.slowShots = true; s.shieldMax += 1; s.shield = s.shieldMax; } },
+    { a: 'athena',    b: 'poseidon',  name: 'Unshakeable Mettle',  apply: (s) => { s.shieldMax += 2; s.shield = s.shieldMax; } },
+    { a: 'athena',    b: 'zeus',      name: 'Lightning Phalanx',   apply: (s) => { s.splCdMax *= 0.85; s.reach *= 1.1; } },
+    { a: 'demeter',   b: 'dionysus',  name: 'Ice Wine',            apply: (s) => { s.dmg *= 1.12; } },
+    { a: 'demeter',   b: 'poseidon',  name: 'Blizzard Shot',       apply: (s) => { s.knock += 110; s.dmg *= 1.06; } },
+    { a: 'demeter',   b: 'zeus',      name: 'Cold Fusion',         apply: (s) => { s.dmg *= 1.1; } },
+    { a: 'dionysus',  b: 'poseidon',  name: 'Exclusive Access',    apply: (s) => { s.dmg *= 1.1; } },
+    { a: 'dionysus',  b: 'zeus',      name: 'Scintillating Feast', apply: (s) => { s.dmg *= 1.1; } },
+    { a: 'poseidon',  b: 'zeus',      name: 'Sea Storm',           apply: (s) => { s.dmg *= 1.12; s.knock += 60; } },
+  ];
+
+  // Legendary boons: one per god, offered only once that god is bound twice.
+  // They are the run's capstone, so each changes how the god plays.
+  const LEGENDARIES = [
+    { god: 'zeus',      name: 'Splitting Bolt',     flag: 'legendSplit',
+      apply: (s) => { s.dmg *= 1.18; s.reach *= 1.1; } },
+    { god: 'poseidon',  name: 'Second Wave',        flag: 'legendWave',
+      apply: (s) => { s.knock += 150; s.dmg *= 1.12; } },
+    { god: 'athena',    name: 'Divine Protection',  flag: 'legendShield',
+      apply: (s) => { s.shieldMax += 3; s.shield = s.shieldMax; } },
+    { god: 'aphrodite', name: 'Unhealthy Fixation', flag: 'legendCharm',
+      apply: (s) => { s.dmg *= 1.2; } },
+    { god: 'ares',      name: 'Black Metal',        flag: 'legendDoom',
+      apply: (s) => { s.dmg *= 1.22; } },
+    { god: 'dionysus',  name: 'Black Out',          flag: 'legendHang',
+      apply: (s) => { s.dmg *= 1.18; } },
+    { god: 'demeter',   name: 'Winter Harvest',     flag: 'legendFreeze',
+      apply: (s) => { s.dmg *= 1.16; } },
+    { god: 'artemis',   name: 'Fully Loaded',       flag: 'legendCrit',
+      apply: (s) => { s.dmg *= 1.25; } },
+    { god: 'hermes',    name: 'Greater Haste',      flag: 'legendHaste',
+      apply: (s) => { s.speed *= 1.15; s.dashCdMax *= 0.8; } },
+    { god: 'chaos',     name: 'Defiance',           flag: 'legendDefiance',
+      apply: (s) => { s.maxHp += 30; s.hp += 30; } },
+  ];
+
+  // A duo needs both parents bound somewhere, which the run already records per
+  // slot; a legendary needs one god bound twice.
+  function boundGods() {
+    const out = [];
+    for (const s of SLOTS) {
+      const b = state.slots[s.id];
+      if (b && b.godId && out.indexOf(b.godId) < 0) out.push(b.godId);
+    }
+    return out;
+  }
+
+  function availableDuos() {
+    const held = boundGods();
+    return DUOS.filter((d) => held.indexOf(d.a) >= 0 && held.indexOf(d.b) >= 0 &&
+                              !(state.takenDuos || {})[d.name]);
+  }
+
+  function availableLegend() {
+    for (const g of GODS) {
+      let n = 0;
+      for (const s of SLOTS) {
+        const b = state.slots[s.id];
+        if (b && b.godId === g.id) n++;
+      }
+      if (n < 2) continue;
+      const L = LEGENDARIES.find((x) => x.god === g.id);
+      if (L && !(state.takenDuos || {})[L.name]) return L;
+    }
+    return null;
+  }
+
+  // Taking a duo or legendary: the stat shift is applied to the live run and the
+  // name is recorded so it can never be offered twice.
+  function takeSpecial(name) {
+    const d = DUOS.find((x) => x.name === name) || LEGENDARIES.find((x) => x.name === name);
+    if (!d) return false;
+    state.takenDuos = state.takenDuos || {};
+    state.takenDuos[name] = true;
+    if (d.apply) d.apply(state);
+    if (d.flag) state[d.flag] = true;
+    state.boons.push(name);
+    toast(name + ' — a pair answered');
+    return true;
+  }
+
+  // ----------------------------------------------------------- Poms of Power
+  // A Pom raises the level of a power the hero already holds. Levels scale the
+  // stats that power already moved, so a Pom never adds a new effect — it makes
+  // the one you chose stronger.
+  const POM_MAX = 5;
+
+  function pomTargets() {
+    return SLOTS.filter((s) => state.slots[s.id]);
+  }
+
+  function applyPom(slotId) {
+    const b = state.slots[slotId];
+    if (!b) return false;
+    b.level = Math.min(POM_MAX, (b.level || 1) + 1 + (state.pomBonus || 0));
+    const g = GODS.find((x) => x.id === b.godId);
+    const v = g && g.variants[slotId];
+    // Re-applying the variant compounds the same stat the binding moved, which
+    // keeps a Pom honest across every slot.
+    if (v && v.apply) v.apply(state);
+    state.pomCount = (state.pomCount || 0) + 1;
+    floater(state.player.x, state.player.y - 26, b.name + ' Lv' + b.level, true);
+    toast(b.name + ' — level ' + b.level);
+    return true;
+  }
+
+  // ------------------------------------------------------------- the Call
+  // The God Gauge fills as the hero deals and takes blows; the Call spends the
+  // whole of it at once. It is the strongest single button in the game because
+  // it is the only one that must be charged. The god that answers is the first
+  // one bound, so the Call follows the build without its own chooser.
+  const CALL_GAUGE_MAX = 100;
+
+  function callGod() {
+    const bound = state.slots.call;
+    if (bound && bound.godId) return GODS.find((g) => g.id === bound.godId) || null;
+    for (const s of SLOTS) {
+      const b = state.slots[s.id];
+      if (b && b.godId) return GODS.find((g) => g.id === b.godId) || null;
+    }
+    return null;
+  }
+
+  function gainGauge(n) {
+    if (state.calling) return;
+    state.gauge = Math.min(CALL_GAUGE_MAX, (state.gauge || 0) + n * (state.gaugeMul || 1));
+  }
+
+  function callReady() { return (state.gauge || 0) >= CALL_GAUGE_MAX; }
+
+  function castCall() {
+    if (!callReady()) { toast('The God Gauge is not full'); return false; }
+    const g = callGod();
+    if (!g) { toast('No god has answered you yet'); return false; }
+    state.gauge = 0;
+    const p = state.player;
+    sfx('boss');
+    const power = 3.2 + (state.pomCount || 0) * 0.15;
+    state.calling = true;
+    for (const e of room.enemies) {
+      if (e.dead) continue;
+      const d = dist(e, p);
+      if (d > 560 + e.r) continue;
+      hurtEnemy(e, state.dmg * power, { x: (e.x - p.x) / (d || 1), y: (e.y - p.y) / (d || 1) }, true);
+      applyGodCurse(e, g.id, 2);
+    }
+    state.calling = false;
+    room.projectiles.push({ x: p.x, y: p.y, t: 0.6, kind: 'nova', r: 560 });
+    room.projectiles.push({ x: p.x, y: p.y, t: 0.5, kind: 'callRing', r: 560 });
+    state.inv = Math.max(state.inv, 1.0);
+    kick(14);
+    toast(g.god + ' answers the call');
+    return true;
+  }
+
+  // A god's strike carries its signature curse: this is the link the guide draws
+  // between a god and a status effect, so one table drives both.
+  const GOD_CURSE = {
+    zeus: 'jolted', poseidon: 'rupture', athena: 'weak', aphrodite: 'weak',
+    ares: 'doom', dionysus: 'hangover', demeter: 'chill', artemis: 'marked',
+    hermes: null, chaos: null,
+  };
+
+  function applyGodCurse(e, godId, power) {
+    const id = GOD_CURSE[godId];
+    if (id) applyCurse(e, id, power || 1);
+  }
+
+  // Curse synergy is checked at the one place damage lands, so no caller has to
+  // remember it: a Marked foe passes a share of what it takes to its kin.
+  function curseSynergy(e, amount) {
+    if (e.curses && e.curses.marked) {
+      for (const o of room.enemies) {
+        if (o === e || o.dead) continue;
+        if (dist(o, e) < 200) hurtEnemy(o, amount * 0.3, null);
+      }
+    }
+  }
+
+  // ------------------------------------------------------------- the Pom screen
+  // One card per bound move, so the level goes where the build actually is. The
+  // chooser is deliberately the same shape as the Slot chooser: it is the same
+  // kind of decision.
+  function openPom() {
+    const body = document.getElementById('pomBody');
+    if (!body) return;
+    mode = 'pom';
+    hide('cards');
+    body.innerHTML = '';
+    const targets = pomTargets();
+    document.getElementById('pomTitle').textContent = 'Pom of Power';
+    document.getElementById('pomSub').textContent =
+      'Raise the level of one move you have already bound.';
+    for (const s of targets) {
+      const held = state.slots[s.id];
+      const el = document.createElement('button');
+      el.className = 'slot eq';
+      el.type = 'button';
+      el.innerHTML = '<em>' + s.label.toUpperCase() + '</em><b>' + held.name + '</b>' +
+        '<span>Level ' + (held.level || 1) + ' → ' + Math.min(POM_MAX, (held.level || 1) + 1) + '</span>' +
+        '<span class="found">' + held.god + '</span>';
+      el.addEventListener('click', () => { applyPom(s.id); closePomToPlay(); });
+      body.appendChild(el);
+    }
+    if (!targets.length) {
+      body.innerHTML = '<p class="sub">No power is bound yet — take a god first.</p>';
+    }
+    show('pom');
+  }
+
+  function closePomToPlay() {
+    hide('pom');
+    state.offer = null;
+    mode = 'playing';
+    lastT = performance.now();
+    showTouch();
+    refreshAbilityButtons();
+  }
+
+  // A duo or legendary won in the reward screen ends the chamber the same way a
+  // god would: back to the run, with the next chamber waiting.
+  function closeRewardToPlay() {
+    hide('cards');
+    state.offer = null;
+    mode = 'playing';
+    lastT = performance.now();
+    showTouch();
+    refreshAbilityButtons();
+  }
+
   // ------------------------------------------------------------- the House
   // One row builder for every meta list, so the mirror, the keepsakes and the
   // pact all read the same way: a title, a line of explanation, and a control.
@@ -6012,6 +6534,14 @@
     state.bossHpMul = p.bossHpMul;
     state.foeSpeedMul = p.foeSpeedMul;
     state.shopMul = p.shopMul;
+    // The later pact conditions fold into the fields the run already reads, so
+    // nothing new has to be invented for them.
+    state.foeDmgMul *= p.dmgLess;
+    state.oneShot = p.oneShot;
+    state.offerLess = p.offerLess;
+    state.obolLess = p.obolLess;
+    state.hazardMore = p.hazardMore;
+    state.obols = Math.max(0, (state.obols || 0) - p.obolLess);
     state.maxHp = Math.max(20, Math.round(state.maxHp * p.startHpMul));
     state.hp = state.maxHp;
   }
@@ -6041,6 +6571,7 @@
     on('tabKeepsake', () => { houseScreen = 'keepsake'; renderHouse(); });
     on('tabPact', () => { houseScreen = 'pact'; renderHouse(); });
     on('aspectDone', startRun);
+    on('btnCall', pressCall);
     on('muteBtn', toggleMute);
     on('resetBtn', () => { if (window.confirm('Wipe all permanent progress?')) resetMeta(); });
     applyMute();
@@ -6066,7 +6597,11 @@
                     spawnEnemy, spawnFoe: spawnEnemy, spawnRoomEnemies,
                     realmOf, realmIndex, REALMS, BOSSES, buildRoom,
                     pressSpell, pressSpecial, readPad, PAD, padEdge,
-                    gods: GODS, slots: SLOTS, shopItems: SHOP_ITEMS, offerCount: OFFER_COUNT,
+                    gods: GODS, slots: SLOTS, shopItems: SHOP_ITEMS,
+    curses: CURSES, duos: DUOS, legendaries: LEGENDARIES, poms: POM_MAX,
+    takeSpecial, applyPom, applyCurse, castCall, gainGauge, callReady,
+    availableDuos, availableLegend, pomTargets, callGod,
+    gaugeMax: CALL_GAUGE_MAX, curseIds: CURSE_IDS, offerCount: OFFER_COUNT,
                     arms: ARMS, aspects: ASPECTS, mirror: MIRROR, keepsakes: KEEPSAKES, pacts: PACTS,
                     aspectDef, aspectsOf, aspectUnlocked, buyAspect, applyAspect,
                     get chosenAspect() { return chosenAspect; }, set chosenAspect(v) { chosenAspect = v; },

@@ -202,7 +202,7 @@ with sync_playwright() as pw:
                god: first.querySelector('em').textContent };
     }""")
     check("picking a god moves on to the slot chooser",
-          chosen["mode"] == "slot" and chosen["slots"] == 4, chosen)
+          chosen["mode"] == "slot" and chosen["slots"] == 5, chosen)
 
     page.evaluate("() => window.__game.save()")
     page.reload(wait_until="load")
@@ -215,7 +215,7 @@ with sync_playwright() as pw:
       return { mode: g.mode, slots: slots.length, pending: g.state.pendingPower };
     }""")
     check("an interrupted slot choice comes back the same",
-          held["mode"] == "slot" and held["slots"] == 4 and held["pending"] is not None, held)
+          held["mode"] == "slot" and held["slots"] == 5 and held["pending"] is not None, held)
 
     slotName = page.evaluate("""() => {
       const first = document.querySelector('#slots .slot');

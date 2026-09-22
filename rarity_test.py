@@ -87,11 +87,14 @@ with sync_playwright() as pw:
       const tag = card.querySelector('.tag').textContent;
       card.click();
       const slots = [...document.querySelectorAll('#slotsBody .slot')];
+      const god = g.gods.find((x) => x.id === g.state.pendingPower);
       return { mode: g.mode, tag, slots: slots.length,
+               moves: god ? Object.keys(god.variants).length : null,
                slotTags: slots.map((s) => (s.querySelector('.tag') || {}).textContent || ''),
                pending: g.state.pendingRarity };
     }""")
-    check("picking a card opens the four-slot chooser", chosen["mode"] == "slot" and chosen["slots"] == 4, chosen)
+    check("picking a card opens the chooser, one card per move the god grants",
+          chosen["mode"] == "slot" and chosen["slots"] == chosen["moves"], chosen)
     check("the chooser keeps the card's rarity",
           all(t == chosen["tag"] for t in chosen["slotTags"]) and chosen["pending"] is not None, chosen)
 
