@@ -31,6 +31,7 @@ state readout.
 python3 smoke_test.py "http://localhost:12001/?debug=1"   # expects depths 1..8+, a boss at depth 5
 python3 pwa_test.py                                        # expects all checks True
 python3 art_test.py                                        # per-character palette check
+python3 update_test.py                                     # proves updates and offline both work
 ```
 
 ## Controls

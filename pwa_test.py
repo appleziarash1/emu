@@ -27,7 +27,7 @@ with sync_playwright() as pw:
         """async () => (await caches.keys()).join(',')"""))
     print("cached urls:", page.evaluate(
         """async () => {
-             const c = await caches.open('underworld-shell-v3');
+             const c = await caches.open('underworld-shell-v4');
              return (await c.keys()).map((r) => new URL(r.url).pathname).join(',');
            }"""))
 

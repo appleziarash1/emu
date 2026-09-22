@@ -164,6 +164,7 @@
       <button class="btn ghost" id="helpBtn" type="button">How to play</button>
     </div>
     <p class="sub" id="bestLine" style="font-size:12px"></p>
+    <p class="sub" id="buildLine" style="font-size:11px; opacity:.5"></p>
   </div>
 
   <div class="overlay" id="help" hidden>
@@ -1681,6 +1682,7 @@
   try {
     const best = localStorage.getItem('ue_best');
     if (best) document.getElementById('bestLine').textContent = 'Best depth so far: ' + best;
+    document.getElementById('buildLine').textContent = 'art build 2';
   } catch (e) {}
 
   // Debug snapshot for automated checks (see ?debug=1).
@@ -1700,10 +1702,28 @@
   requestAnimationFrame((t) => { lastT = t; frame(t); });
   window.__game = { get mode() { return mode; }, start: startRun, get state() { return state; }, get room() { return room; }, get cam() { return cam; } };
 
-  // Offline PWA: once installed to the Home Screen the game keeps working with
-  // no server and no network, because every asset is cached on first load.
+  // Offline PWA. Browsers do not reliably re-check a service worker on their
+  // own, so look for a new build on every load and in the background, then
+  // reload once so the user is never stuck on a stale game.
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloaded) return;
+      reloaded = true;
+      location.reload();
+    });
+
+    const lookForUpdate = (reg) => { if (reg) reg.update().catch(() => {}); };
+
+    navigator.serviceWorker.register('./sw.js')
+      .then((reg) => {
+        lookForUpdate(reg);
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') lookForUpdate(reg);
+        });
+        setInterval(() => lookForUpdate(reg), 60 * 60 * 1000);
+      })
+      .catch(() => {});
   }
 })();
 </script>
