@@ -4,6 +4,10 @@ An original, Hades-inspired browser roguelike that installs as a PWA. Written as
 single self-contained `index.html` — no frameworks, no CDN, no backend — so it
 keeps working offline once added to the iPhone Home Screen.
 
+**Play it:** https://appleziarash1.github.io/emu/ — open in Safari on the iPhone,
+then Share → Add to Home Screen. It is a static site on GitHub Pages, so the link
+stays up as long as the repository does.
+
 This is **not** Hades and contains none of its assets or code. It is an homage
 built around the same ideas: descend through chambers, take a god's boon after
 each one and choose which of your moves it empowers, and fight the Warden at
