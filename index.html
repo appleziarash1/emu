@@ -1668,9 +1668,9 @@
     // projectiles
     const sse = state.se.special || {};
     for (const pr of room.projectiles) {
-      // impact rings, bursts and debris only age; they are drawn, not simulated
+      // impact rings, bursts, waves and debris only age; they are drawn, not simulated
       if (pr.kind === 'spark' || pr.kind === 'blast' || pr.kind === 'impact' ||
-          pr.kind === 'nova') { pr.t -= dt; continue; }
+          pr.kind === 'nova' || pr.kind === 'wave') { pr.t -= dt; continue; }
       if (pr.kind === 'debris') {
         pr.t -= dt;
         pr.x += pr.vx * dt; pr.y += pr.vy * dt;
@@ -1805,7 +1805,8 @@
     // Anything that is not cosmetic or the player's own shot still holds the gate
     // shut, so a thrown blade in flight cannot open the room a beat early.
     const inert = (x) => x.kind === 'spark' || x.kind === 'blast' || x.kind === 'impact' ||
-                         x.kind === 'debris' || x.kind === 'arrow' || x.kind === 'chakram';
+                         x.kind === 'wave' || x.kind === 'debris' || x.kind === 'arrow' ||
+                         x.kind === 'chakram';
     if (!room.cleared && room.enemies.length === 0 && room.projectiles.every(inert)) {
       room.cleared = true;
       if (room.isBoss) { toast('The gate stands open'); }
@@ -2137,7 +2138,7 @@
     state.takenIds = data.takenIds || {};
     state.boons = data.boons || [];
     state.offer = data.offer || null;
-    state.dashCd = 0; state.dashT = 0; state.inv = 0; state.swingT = 0; state.swingCd = 0;
+    state.dashCd = 0; state.dashT = 0; state.inv = 0.75; state.swingT = 0; state.swingCd = 0;
     state.slots = state.slots || { attack: null, special: null, spell: null };
     state.se = state.se || { attack: {}, special: {}, spell: {} };
     state.pendingPower = state.pendingPower || null;
@@ -3430,6 +3431,25 @@
       ctx.globalAlpha = 1;
       return;
     }
+    if (pr.kind === 'wave') {
+      // Tidal ring: an expanding arc of surf rather than a solid disc.
+      const k = clamp(pr.t / 0.4, 0, 1);
+      const grow = 1 - k;
+      ctx.globalAlpha = k * 0.7;
+      ctx.strokeStyle = 'rgba(150,225,255,0.9)';
+      ctx.lineWidth = 3 + grow * 5;
+      ctx.beginPath();
+      ctx.arc(pr.x, pr.y, pr.r * (0.45 + grow * 0.75), 0, TAU);
+      ctx.stroke();
+      ctx.globalAlpha = k * 0.3;
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(pr.x, pr.y, pr.r * (0.3 + grow * 0.9), 0, TAU);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      return;
+    }
     if (pr.kind === 'arrow') {
       // Arrows fly along their heading, so a shaft and head stay readable.
       const a = Math.atan2(pr.vy, pr.vx);
@@ -3606,7 +3626,7 @@
   try {
     const best = localStorage.getItem('ue_best');
     if (best) document.getElementById('bestLine').textContent = 'Best depth so far: ' + best;
-    document.getElementById('buildLine').textContent = 'art build 9';
+    document.getElementById('buildLine').textContent = 'art build 10';
   } catch (e) {}
   refreshResume();
 

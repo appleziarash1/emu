@@ -7,6 +7,7 @@ the phone actually receives v2 — plus that offline still works afterwards.
 """
 import http.server
 import os
+import re
 import shutil
 import socketserver
 import sys
@@ -50,9 +51,11 @@ work = tempfile.mkdtemp()
 for name in ("index.html", "sw.js", "manifest.webmanifest", "serve.js"):
     shutil.copy(os.path.join(SRC, name), work)
 
-# v1 of the game
+# v1 of the game. The build label moves with each release, so read whatever the
+# current one is instead of pinning the test to a number that will drift.
 v1 = open(os.path.join(work, "index.html")).read()
-open(os.path.join(work, "index.html"), "w").write(v1.replace("art build 9", "art build 1"))
+BUILD = re.search(r"'art build (\d+)'", v1).group(0)
+open(os.path.join(work, "index.html"), "w").write(v1.replace(BUILD, "'art build 1'"))
 
 httpd = serve(work)
 url = f"http://127.0.0.1:{PORT}/"
@@ -68,7 +71,7 @@ with sync_playwright() as pw:
 
     # The site is updated while the phone is away.
     open(os.path.join(work, "index.html"), "w").write(
-        v1.replace("art build 9", "art build 99"))
+        v1.replace(BUILD, "'art build 99'"))
 
     page.reload(wait_until="load")
     page.wait_for_timeout(1800)

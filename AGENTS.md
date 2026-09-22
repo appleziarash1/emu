@@ -94,6 +94,15 @@ Single-file canvas roguelike PWA. No build step: `index.html` is the whole game,
 - The special-slot flags live in the chakram branch of the projectile update,
   which is not next to `castSpecial` in the file. A new special flag must be
   read there, not in `castSpecial`, which only spawns the blade.
+- Every `room.projectiles` kind must be handled by the update loop and by
+  `drawProjectile`. Anything not matched by an `if (pr.kind === ...)` early-out
+  falls through to the generic mover at the end of the update loop, which moves
+  it with `pr.vx`. A cosmetic kind pushed without a velocity (a ring, a burst)
+  therefore goes `NaN` on its first tick, and the failure surfaces much later as
+  "createRadialGradient: non-finite value" from the orb fallback in
+  `drawProjectile`. Only `arrow` and `orb` are always spawned with a velocity,
+  so only they may use the fallback. `god_test.py` audits both loops against the
+  pushed kinds, so a new kind must be added to both or the suite fails.
 
 ## Running the tests
 Playwright is not installed by default: `pip install playwright` then

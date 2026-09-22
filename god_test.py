@@ -61,6 +61,31 @@ for slot, fl in slotSites:
 check("the flag audit found powers to audit", len(seen) > 0, len(seen))
 check("every power flag is read by its own slot's combat code", not silent, silent)
 
+# Every projectile kind the game can push must be accounted for by both the
+# update loop and the renderer. A kind that falls through to the generic mover
+# is moved by undefined velocity and its coordinates become NaN, which only
+# shows up later as a non-finite canvas gradient. `wave` shipped that way.
+updateLoop = SRC[SRC.index("// projectiles"):SRC.index("room.projectiles = room.projectiles.filter")]
+drawFn = SRC[SRC.index("function drawProjectile"):SRC.index("function drawVignette")]
+# Only the literals pushed into room.projectiles matter; enemy and weapon
+# spawns use `kind:` too but are never drawn as projectiles.
+pushes = re.findall(r"room\.projectiles\.push\(\{([^}]*)\}", SRC)
+projectileKinds = sorted({k for p in pushes for k in re.findall(r"kind:\s*'(\w+)'", p)})
+simulated = [k for k in projectileKinds if re.search(r"pr\.kind === '" + k + r"'", updateLoop)]
+drawn = [k for k in projectileKinds if re.search(r"pr\.kind === '" + k + r"'", drawFn)]
+# Arrows and orbs are the only kinds always spawned with a velocity, so they are
+# the only ones allowed to fall through to the generic mover at the end of the
+# update loop. Orbs are likewise rendered by drawProjectile's final branch.
+genericMovers = {"arrow", "orb"}
+fallbackDrawn = {"orb"}
+unaccounted = [k for k in projectileKinds if k not in simulated]
+unmoved = [k for k in unaccounted if k not in genericMovers]
+missingDraw = [k for k in projectileKinds if k not in drawn and k not in fallbackDrawn]
+check("every projectile kind is handled by the update loop or a velocity-carrying fallback",
+      not unmoved, unmoved)
+check("every projectile kind is drawn by its own branch or the orb fallback",
+      not missingDraw, missingDraw)
+
 
 with sync_playwright() as pw:
     browser = pw.chromium.launch()
