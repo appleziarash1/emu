@@ -44,5 +44,15 @@
         }
       ]
     }
+  ],
+  "rewrites": [
+    {
+      "source": "/veilborn",
+      "destination": "/veilborn/index.html"
+    },
+    {
+      "source": "/veilborn/",
+      "destination": "/veilborn/index.html"
+    }
   ]
 }
