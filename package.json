@@ -1,0 +1,21 @@
+{
+  "name": "veilborn-final-browser-game",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "node tests/e2e.mjs",
+    "test:build": "npm run build && node tests/e2e.mjs",
+    "build:pages": "VITE_BASE=/veilborn/ vite build"
+  },
+  "dependencies": {
+    "phaser": "^3.90.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0",
+    "vite": "^7.0.0"
+  }
+}
