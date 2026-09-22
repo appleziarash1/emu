@@ -409,9 +409,13 @@
       • Clear every shade in a chamber, then pick a god's boon. The arm you chose
         at the start stays with you all the way down.<br />
       • Boons stack. Build a strong run, then beat the Warden.<br />
-      • Keyboard: WASD or arrows to move, J strike, U spell, I special, Space dash.<br />
+      • Keyboard: WASD or arrows to move, J strike, U spell, I special, Space dash,
+        O call.<br />
+      • CALL spends the whole God Gauge at once. The gauge fills as you deal and
+        take blows, shows under the experience bar, and lights the button when it
+        is full.<br />
       • Controller: left stick to move, X strike, Y special, B spell, A dash,
-        Start pause. The touch stick and buttons hide while a controller is
+        D-pad up call, Start pause. The touch stick and buttons hide while a controller is
         plugged in, and come back if you unplug it.
     </p>
     <div class="row"><button class="btn" id="helpBack" type="button">Got it</button></div>
@@ -616,8 +620,8 @@
   }
   let padHit = false, padDash = false;
   let padActive = false;
-  const padPrev = { hit: false, dash: false, spell: false, special: false };
-  const padEdge = { hit: false, dash: false, spell: false, special: false };
+  const padPrev = { hit: false, dash: false, spell: false, special: false, call: false };
+  const padEdge = { hit: false, dash: false, spell: false, special: false, call: false };
   // A phone has no keyboard, so the touch buttons stay; a desktop does, and gets
   // a key hint instead of two large circles over the play area.
   const hasKeyboard = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
@@ -677,14 +681,17 @@
       const dashDown = padPressed(p, PAD.A) || padPressed(p, PAD.LB) || padPressed(p, PAD.LT);
       const spellDown = padPressed(p, PAD.B);
       const specialDown = padPressed(p, PAD.Y) || padPressed(p, PAD.RT);
+      const callDown = padPressed(p, PAD.DPAD_UP);
       // Rising edges are buffered so a pad tap is not lost to a skipped frame.
       if (hitDown && !padPrev.hit) padEdge.hit = true;
       if (dashDown && !padPrev.dash) padEdge.dash = true;
       if (spellDown && !padPrev.spell) padEdge.spell = true;
       if (specialDown && !padPrev.special) padEdge.special = true;
+      if (callDown && !padPrev.call) padEdge.call = true;
       padPrev.hit = hitDown; padPrev.dash = dashDown;
       padPrev.spell = spellDown; padPrev.special = specialDown;
-      return { x, y, hit: hitDown, dash: dashDown, spell: spellDown, special: specialDown };
+      padPrev.call = callDown;
+      return { x, y, hit: hitDown, dash: dashDown, spell: spellDown, special: specialDown, call: callDown };
     }
     return null;
   }
@@ -2895,8 +2902,9 @@
     // readPad also records rising edges so a pad press is buffered like any other
     const padHitNow = padEdge.hit, padDashNow = padEdge.dash;
     const padSpellNow = padEdge.spell, padSpecialNow = padEdge.special;
+    const padCallNow = padEdge.call;
     padEdge.hit = false; padEdge.dash = false;
-    padEdge.spell = false; padEdge.special = false;
+    padEdge.spell = false; padEdge.special = false; padEdge.call = false;
     let mx = input.x + kb.x + (pad ? pad.x : 0);
     let my = input.y + kb.y + (pad ? pad.y : 0);
     const ml = Math.hypot(mx, my);
@@ -2967,7 +2975,7 @@
     if (wantSpell) { pressBuf.spell = 0; castSpell(); }
     const wantSpecial = held.special || pressBuf.special > 0 || padSpecialNow;
     if (wantSpecial) { pressBuf.special = 0; castSpecial(); }
-    const wantCall = held.call || pressBuf.call > 0;
+    const wantCall = held.call || pressBuf.call > 0 || padCallNow;
     if (wantCall) { pressBuf.call = 0; castCall(); }
 
     // enemies
@@ -5980,7 +5988,7 @@
   try {
     const best = localStorage.getItem('ue_best');
     if (best) document.getElementById('bestLine').textContent = 'Best depth so far: ' + best;
-    document.getElementById('buildLine').textContent = 'art build 17';
+    document.getElementById('buildLine').textContent = 'art build 18';
   } catch (e) {}
   refreshResume();
   initMeta();

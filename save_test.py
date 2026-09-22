@@ -197,12 +197,15 @@ with sync_playwright() as pw:
     chosen = page.evaluate("""() => {
       const first = document.querySelector('#cards .card');
       first.click();
+      const g = window.__game;
       const slots = [...document.querySelectorAll('#slots .slot')];
-      return { mode: window.__game.mode, slots: slots.length,
+      const god = g.gods.find((x) => x.id === g.state.pendingPower);
+      return { mode: g.mode, slots: slots.length,
+               moves: god ? Object.keys(god.variants).length : null,
                god: first.querySelector('em').textContent };
     }""")
-    check("picking a god moves on to the slot chooser",
-          chosen["mode"] == "slot" and chosen["slots"] == 5, chosen)
+    check("picking a god moves on to the slot chooser, one card per move it grants",
+          chosen["mode"] == "slot" and chosen["slots"] == chosen["moves"], chosen)
 
     page.evaluate("() => window.__game.save()")
     page.reload(wait_until="load")
@@ -212,10 +215,14 @@ with sync_playwright() as pw:
     held = page.evaluate("""() => {
       const g = window.__game;
       const slots = [...document.querySelectorAll('#slots .slot')];
-      return { mode: g.mode, slots: slots.length, pending: g.state.pendingPower };
+      const god = g.gods.find((x) => x.id === g.state.pendingPower);
+      return { mode: g.mode, slots: slots.length,
+               moves: god ? Object.keys(god.variants).length : null,
+               pending: g.state.pendingPower };
     }""")
     check("an interrupted slot choice comes back the same",
-          held["mode"] == "slot" and held["slots"] == 5 and held["pending"] is not None, held)
+          held["mode"] == "slot" and held["slots"] == held["moves"] and
+          held["pending"] is not None, held)
 
     slotName = page.evaluate("""() => {
       const first = document.querySelector('#slots .slot');

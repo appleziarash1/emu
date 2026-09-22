@@ -1,10 +1,10 @@
-"""The four abilities, and the pad and keyboard bindings that reach them.
+"""The five abilities, and the pad and keyboard bindings that reach them.
 
-The hero has one attack on each of four controls: X strikes, Y throws the
-special, B casts the spell, A dashes. The same four are reachable from a
-keyboard and from the on-screen buttons, and each has to be independent — one
-press must not fire two abilities, and a cooling ability must refuse rather
-than silently swallow the press.
+The hero has one attack on each control: X strikes, Y throws the special, B casts
+the spell, A dashes, and the Call spends the God Gauge. The same five are
+reachable from a keyboard and from the on-screen buttons, and each has to be
+independent — one press must not fire two abilities, and a cooling ability must
+refuse rather than silently swallow the press.
 """
 import sys
 from playwright.sync_api import sync_playwright
@@ -56,14 +56,13 @@ with sync_playwright() as pw:
     page.goto(URL, wait_until="load")
     page.wait_for_timeout(200)
 
-    # 1. All four buttons exist on the touch layer, not just the old two.
-    ids = page.evaluate("""() => ['btnHit', 'btnDash', 'btnSpec', 'btnSpell']
-        .map((id) => !!document.getElementById(id))""")
-    check("the touch layer carries all four abilities", all(ids), ids)
-    labels = page.evaluate("""() => ['btnHit', 'btnDash', 'btnSpec', 'btnSpell']
-        .map((id) => document.getElementById(id).textContent)""")
+    # 1. All five buttons exist on the touch layer, not just the old two.
+    IDS = "['btnHit', 'btnDash', 'btnSpec', 'btnSpell', 'btnCall']"
+    ids = page.evaluate("""() => %s.map((id) => !!document.getElementById(id))""" % IDS)
+    check("the touch layer carries all five abilities", all(ids), ids)
+    labels = page.evaluate("""() => %s.map((id) => document.getElementById(id).textContent)""" % IDS)
     check("each touch button is labelled for its ability",
-          labels == ["STRIKE", "DASH", "SPECIAL", "SPELL"], labels)
+          labels == ["STRIKE", "DASH", "SPECIAL", "SPELL", "CALL"], labels)
 
     page.click("#playBtn")
     page.wait_for_timeout(400)
@@ -160,14 +159,14 @@ with sync_playwright() as pw:
         .filter((x) => x.kind === 'chakram').length""")
     check("the blade is gone once it reaches the hero", returned == 0, returned)
 
-    # 8. The pad's four face buttons map to the four abilities, checked one at a
-    #    time so a shared code path cannot hide behind a passing neighbour.
+    # 8. The pad's face buttons map to the abilities, checked one at a time so a
+    #    shared code path cannot hide behind a passing neighbour.
     page.evaluate(PAD_STUB)
     page.wait_for_timeout(100)
     check("a connected pad hides the touch cluster",
           page.evaluate("() => window.__game.padActive"), True)
-    hidden = page.evaluate("""() => ['btnHit', 'btnDash', 'btnSpec', 'btnSpell']
-        .map((id) => getComputedStyle(document.getElementById(id)).display)""")
+    hidden = page.evaluate("""() => %s
+        .map((id) => getComputedStyle(document.getElementById(id)).display)""" % IDS)
     check("every touch button hides while the pad is steering",
           all(d == "none" for d in hidden), hidden)
 
@@ -211,7 +210,63 @@ with sync_playwright() as pw:
     a_dashed = page.evaluate("() => window.__game.state.dashCd > 0")
     check("A dashes", a_dashed, a_dashed)
 
-    # 9. Keyboard reaches the same four, and no key fires two abilities.
+    # The Call is the fifth verb. Every input has to reach it, or the strongest
+    # button in the game is dead on whichever one was forgotten.
+    CALL_READY = """() => {
+      const g = window.__game, s = g.state;
+      g.room.cleared = true; g.room.enemies.length = 0;
+      s.slots.call = { slot: 'call', godId: 'zeus', name: 'Zeus Aid', level: 1 };
+      s.se.call = {};
+      s.gauge = 100;
+      return true;
+    }"""
+    def gauge():
+        return page.evaluate("() => window.__game.state.gauge")
+
+    # dpad up, on a pad
+    page.evaluate(CALL_READY)
+    page.evaluate("() => { window.__pad.buttons[12].pressed = true; }")
+    page.wait_for_timeout(120)
+    page.evaluate("() => { window.__pad.buttons[12].pressed = false; }")
+    page.wait_for_timeout(150)
+    dpad = gauge()
+    check("D-pad up spends the gauge", dpad == 0, dpad)
+
+    page.evaluate("() => window.__game.setPadActive(false)")
+    page.wait_for_timeout(120)
+    # the on-screen button
+    page.evaluate(CALL_READY)
+    page.evaluate("() => document.getElementById('btnCall').click()")
+    page.wait_for_timeout(180)
+    btn = gauge()
+    check("the CALL button spends the gauge", btn == 0, btn)
+
+    # the keyboard, and that it does not also fire a neighbour. The Call draws its
+    # own burst, so the tell is the spell's cooldown, not a projectile count.
+    page.evaluate(CALL_READY)
+    page.evaluate("""() => { const g = window.__game;
+                             g.state.splCd = 0; g.state.specCd = 0;
+                             g.room.projectiles.length = 0; }""")
+    page.keyboard.press("o")
+    page.wait_for_timeout(180)
+    kb_call = page.evaluate("""() => ({
+      gauge: window.__game.state.gauge,
+      splCd: window.__game.state.splCd,
+      specCd: window.__game.state.specCd })""")
+    check("O spends the gauge from the keyboard", kb_call["gauge"] == 0, kb_call)
+    check("O does not put the spell or the special on cooldown",
+          kb_call["splCd"] == 0 and kb_call["specCd"] == 0, kb_call)
+
+    # and that a short gauge refuses, so the Call cannot be spammed
+    page.evaluate("""() => { const s = window.__game.state;
+                             s.slots.call = { slot: 'call', godId: 'zeus', name: 'Zeus Aid', level: 1 };
+                             s.se.call = {}; s.gauge = 40; }""")
+    page.keyboard.press("o")
+    page.wait_for_timeout(180)
+    short = gauge()
+    check("the Call refuses while the gauge is short", short == 40, short)
+
+    # 9. Keyboard reaches the same verbs, and no key fires two abilities.
     page.evaluate("() => window.__game.setPadActive(false)")
     page.wait_for_timeout(120)
     page.evaluate(QUIET)
@@ -282,7 +337,7 @@ with sync_playwright() as pw:
     page.click("#helpBtn")
     page.wait_for_timeout(200)
     help_text = page.evaluate("() => document.getElementById('help').textContent")
-    for token in ["SPELL", "SPECIAL", "X strike", "Y special", "B spell", "A dash"]:
+    for token in ["SPELL", "SPECIAL", "X strike", "Y special", "B spell", "A dash", "call", "God Gauge"]:
         check("the help screen explains " + token, token in help_text)
 
     print("page errors:", errors[:5] or "none")

@@ -16,8 +16,9 @@ Single-file canvas roguelike PWA. No build step: `index.html` is the whole game,
 ## Conventions
 - Every release bumps two strings together: the build label in `index.html`
   (`art build N`, shown on the menu) and `VERSION` in `sw.js` (`vN`).
-  `update_test.py` asserts the new build reaches a phone. It also hard-codes the
-  current label when it rewrites a test build, so update it in the same commit.
+  `update_test.py` asserts the new build reaches a phone. It reads the current
+  label back out of the file before rewriting its test build, so the label does
+  not have to be updated in the same commit — only the two source strings do.
 - Cosmetic projectiles are tracked in `room.projectiles` but must never count
   toward clearing a chamber, or a gate can stay shut forever.
 - Presses are buffered (`pressBuf`, `padEdge`) because a frame can be skipped
@@ -78,8 +79,27 @@ Single-file canvas roguelike PWA. No build step: `index.html` is the whole game,
 
 ## Gods, slots and the market
 - A god is one entry in `GODS` with a variant per slot (`attack`, `special`,
-  `spell`), each holding `name`, `desc`, `apply(s)` and `flags`. `SLOTS` is the
-  list of the three moves; `SHOP_ITEMS` is derived from `GODS`.
+  `spell`, `dash`, `call`), each holding `name`, `desc`, `apply(s)` and `flags`.
+  `SLOTS` is the list of the moves; `SHOP_ITEMS` is derived from `GODS`. A god
+  may omit a slot: Hermes and Chaos grant no `call`, so anything that walks the
+  slots must test `god.variants[slot]` rather than assume one exists. The chooser
+  opens one card per move the god actually grants, so its length is not a
+  constant — assert against the god's own `variants`, as `feature_test.py`,
+  `rarity_test.py` and `god_test.py` now do.
+- `call` is the Aid from the guide. It is a real slot with its own binding and
+  its own god, so the Call answers whoever the player put there — not the first
+  god bound, which is what the earlier wiring did.
+- A new verb has **four** input paths, and missing one is silent: the touch
+  button (`bindButton`), the keyboard (the `keydown` block), the press buffer
+  (`pressBuf` + the dispatch line), and the pad (`padPrev`/`padEdge`/`readPad`
+  and the dispatch). The Call shipped wired to three of them and was dead on a
+  controller. `ability_test.py` now drives all four and asserts each one spends
+  the gauge.
+- The Call pushes a `nova` projectile for its burst, the same `kind` the spell
+  uses. Do not count novas to prove "the spell did not fire" — read `splCd`
+  instead. This cost a false failure once.
+- A gauge that a power spends must not be refilled by that power's own blows, or
+  the button can be held down. `gainGauge` early-returns while `state.calling`.
 - Effect flags live in `state.se[slot].<flag>` and the combat hooks read only
   their **own** slot (`state.se.attack` in `swing`/`applyStrikeEffects`,
   `state.se.special` in the chakram update, `state.se.spell` in `castSpell`).

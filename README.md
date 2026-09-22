@@ -15,14 +15,24 @@ the gate.
 
 ## Gods and boons
 
-Eleven gods, each with a different reward for each of the three moves. A cleared
-chamber offers **two** gods; take one and it opens a chooser with one option per
-move, and the option the god naturally favours is flagged
-**SUGGESTED**. Bound powers live in three slots — Strike, Special, Spell — and a
-power only changes the move it was bound to. Zeus on Strike chains lightning to
-the foes beside your target; Zeus on Spell makes the burst arc instead. Binding a
-second god into a slot replaces what was there. `OFFER_COUNT` in `index.html`
-sets how many gods a chamber offers.
+Eleven gods, each with a different reward for most of the five moves. A cleared
+chamber offers four gods; take one and it opens a chooser with one option per
+move that god grants, and the option the god naturally favours is flagged
+**SUGGESTED**. Bound powers live in five slots — Strike, Special, Spell, Dash and
+Call — and a power only changes the move it was bound to. Zeus on Strike chains
+lightning to the foes beside your target; Zeus on Spell makes the burst arc
+instead. Binding a second god into a slot replaces what was there. `OFFER_COUNT`
+in `index.html` sets how many gods a chamber offers, and a Pom can take one of
+those places once a power is bound.
+
+Hermes and Chaos grant no Call — everything else does. The Call is the Aid the
+guide names, and the god that answers it is the one bound to the Call slot.
+
+Beyond the gods, a run can also pick up the guide's other prizes: a Pom of Power
+to raise the level of a move already bound, a duo boon once both of its parent
+gods are bound, and a legendary once one god is bound twice. Curses carry the
+gods' signatures — Hangover ticks, Doom lands late, Weak dulls, and the rest
+follow the guide's table.
 
 | God | Theme |
 | --- | --- |
@@ -38,7 +48,7 @@ sets how many gods a chamber offers.
 | Hephaestus | forge and fire |
 | Chaos | power at a price |
 
-The three bound gods are named along the bottom of the HUD, and again on the
+The bound powers are named along the bottom of the HUD, and again on the
 pause screen.
 
 ## Obols and the Gods' Market
@@ -127,6 +137,13 @@ to replay a fight.
   controller takeover, the feel of a landed hit, and the desktop keyboard path
 - `feature_test.py` — weapon mechanics, chamber size and walls, the road, the
   minimap, the corridor, and the barriers (a dash crosses one, a foe cannot)
+- `rarity_test.py` — the rarity curve by depth and the god cards that carry it
+- `realm_test.py` — the chamber, the gate and the road, the minimap, the corridor
+  and the barriers
+- `ability_test.py` — each of the five moves, including the Call and its gauge
+- `meta_test.py` — the House: aspects, the Mirror, keepsakes and the Pact
+- `systems_test.py` — the guide's systems end to end: curse synergies, duos and
+  legendaries, Poms, the Call's gauge, and the fifteen pact conditions
 - `update_test.py` — caches a build, ships a new one, asserts the new one arrives
 - `stale_phone_test.py`, `clear_data_test.py` — the one-off migration off the old
   cache-first worker, for phones that installed a build before the fix
@@ -135,13 +152,18 @@ to replay a fight.
 ## Tests
 
 ```bash
-python3 smoke_test.py "http://localhost:12001/?debug=1"   # expects depths 1..8+, a boss at depth 5
+python3 smoke_test.py "http://localhost:12001/?debug=1"   # drives a run to the boss at depth 5
 python3 save_test.py                                       # resume rebuilds the exact chamber
 python3 pwa_test.py                                        # expects all checks True
 python3 control_test.py                                    # joystick, controller, hit feel
 python3 feature_test.py                                    # weapons, big chambers, maps
 python3 art_test.py                                        # per-character palette check
 python3 god_test.py                                        # god powers, slots, market, pause
+python3 rarity_test.py                                     # the rarity curve and the cards
+python3 realm_test.py                                      # chambers, gate, minimap, barriers
+python3 ability_test.py                                    # the five moves and the Call
+python3 meta_test.py                                       # the House, aspects, Mirror, keepsakes
+python3 systems_test.py                                    # curses, duos, Poms, gauge, the Pact
 python3 update_test.py                                     # proves updates and offline both work
 python3 stale_phone_test.py                                # old installs heal within two reopens
 python3 clear_data_test.py                                 # clearing site data heals in one
@@ -173,6 +195,11 @@ the running build is always visible.
   close and knocking incoming shots out of the air. It recharges slowly.
 - `SPECIAL` / `I` / gamepad Y hurls a blade that cuts one side of the room and
   comes back to your hand, cutting the same foes again on the way home.
+- `CALL` / `O` / gamepad D-pad up spends the whole God Gauge at once — the
+  strongest single button in the game, and the only one that must be charged. The
+  gauge fills from blows dealt and blows taken, shows under the experience bar,
+  and the button lights when it is full. The god that answers is the one bound to
+  the Call slot, so the Call is only as good as the god you put behind it.
 - `DASH` / space / gamepad A dashes, and makes you briefly untouchable.
 - **Stone barriers.** Each chamber is broken up by waist-high stone blocks. They
   stop you walking across, and nothing you carry gets you over them — only a dash
@@ -189,10 +216,10 @@ the running build is always visible.
 - A connected controller replaces the touch controls: they hide while it is in use
   and return when it is unplugged, thumb ring included.
 - The pad maps left stick to move, `X` strike, `Y` special, `B` spell, `A` dash,
-  and `Start` (or `Back`) to pause and resume. The pause poll runs in the frame
-  loop, not in `update()`, because `update()` is skipped while paused — a check
-  that lived there could pause the run but never resume it.
+  D-pad up call, and `Start` (or `Back`) to pause and resume. The pause poll runs
+  in the frame loop, not in `update()`, because `update()` is skipped while
+  paused — a check that lived there could pause the run but never resume it.
 - On a mouse-and-keyboard machine the resting thumb ring and the touch buttons stay
   out of the way, and a small
-  `WASD move · J strike · U spell · I special · Space dash` hint takes their place.
-  Phones still get the full on-screen pad.
+  `WASD move · J strike · U spell · I special · Space dash · O call` hint takes
+  their place. Phones still get the full on-screen pad.
