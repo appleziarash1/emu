@@ -112,7 +112,9 @@ with sync_playwright() as pw:
     worth = page.evaluate("""() => {
       const g = window.__game;
       const base = () => ({ dmg: 10, reach: 60, knock: 0, splCdMax: 4, specCdMax: 4, dashCdMax: 4 });
-      const n = base(), l = base();
+      // Both binds must start from a clean run, or the damage left over by the
+      // previous bind leaks into the comparison and the check goes flaky.
+      g.start();
       g.bindPower('zeus', 'attack', 'normal');
       const norm = g.state.dmg;
       g.start();
@@ -174,8 +176,12 @@ with sync_playwright() as pw:
         g.room.isBoss = true;
         g.room.enemies.length = 0;
         g.spawnBoss ? g.spawnBoss(d) : null;
-        const b = g.room.enemies.find((e) => e.kind === 'boss');
-        out.push({ depth: d, hp: b && b.hp, dmg: b && b.dmg, scale: b && b.scale });
+        // A boss encounter's health is the sum of its bodies, because a paired
+        // boss splits one budget across two of them.
+        const bs = g.room.enemies.filter((e) => e.kind === 'boss');
+        const b = bs[0];
+        out.push({ depth: d, hp: bs.reduce((a, e) => a + e.hp, 0),
+                   dmg: b && b.dmg, scale: b && b.scale });
       }
       return out;
     }""")

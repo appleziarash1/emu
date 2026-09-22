@@ -990,7 +990,110 @@
     id: g.id, god: g.god, theme: g.theme,
     price: g.id === 'chaos' ? 160 : g.id === 'ares' || g.id === 'zeus' ? 130 : 110,
   }));
-  // ---------------------------------------------------------------- weapons
+  // ---------------------------------------------------------------- realms
+  // The five layers of the descent. A realm is more than a coat of paint: it
+  // owns the chamber's palette and props, the roster that spawns in it, the
+  // hazard that shapes how the hero moves, and the boss waiting at its end.
+  // Every fifth floor closes a realm, so depth maps to a realm as below.
+  //
+  // Scaling note: a realm's foes are only modestly tougher in raw numbers. The
+  // difficulty step comes from *what they do* — a kamikaze, a splitter, a foe
+  // that revives — because multiplying health alone reads as spongy, not hard.
+  const REALM_FLOORS = 5;
+  const realmIndex = (depth) => Math.min(4, Math.floor((depth - 1) / REALM_FLOORS));
+  const realmOf = (depth) => REALMS[realmIndex(Math.max(1, depth || 1))];
+
+  const REALMS = [
+    {
+      id: 'tartarus', name: 'Tartarus', tag: 'The Prison',
+      blurb: 'The first deep. Soft-footed dead, and room to learn the blade.',
+      stars: 2,
+      // Palette: a cool violet gloom with warm torchlight, the look the game
+      // shipped with, kept as the baseline the other realms answer to.
+      pal: { floorA: '#241338', floorB: '#0c0717', stone: ['#1c112d', '#170e26', '#130a20'],
+             wall: '#0a0514', lip0: '#241634', lip1: '#0d0719', edge: '#3b2a54',
+             fog: 'rgba(120,86,200,0.05)', light: 'rgba(255,196,110,', accent: '#6a4bd4' },
+      props: ['cracks', 'rubble', 'bones', 'moss', 'vases', 'barriers', 'pillars', 'torches'],
+      hazard: null,
+      foes: [
+        { kind: 'shade',  w: 0.5, r: 14, hp: 26,  dmg: 8,  speed: 74, color: '#8f7bd8' },
+        { kind: 'wraith', w: 0.32, r: 16, hp: 40,  dmg: 11, speed: 46, color: '#4fc3d9' },
+        { kind: 'brute',  w: 0.18, r: 22, hp: 80,  dmg: 17, speed: 44, color: '#d96a4f' },
+      ],
+      boss: 'megaera',
+    },
+    {
+      id: 'asphodel', name: 'Asphodel', tag: 'The Lava Fields',
+      blurb: 'A river of fire. The dead smoulder, and the floor itself bites.',
+      stars: 3,
+      // Palette: cooled charcoal crossed with ember orange; the fog is smoke.
+      pal: { floorA: '#3a1a10', floorB: '#120704', stone: ['#2a140c', '#22100a', '#1a0b07'],
+             wall: '#0d0402', lip0: '#40190c', lip1: '#160805', edge: '#6b2a13',
+             fog: 'rgba(255,110,40,0.06)', light: 'rgba(255,150,60,', accent: '#ff6b2a' },
+      props: ['cracks', 'rubble', 'lavaPools', 'vases', 'barriers', 'pillars', 'torches'],
+      hazard: { kind: 'lava', dps: 0.13, tint: '#ff5a1e' },
+      foes: [
+        { kind: 'cinder',   w: 0.40, r: 15, hp: 34, dmg: 10, speed: 82, color: '#ff8a3c', boom: 1 },
+        { kind: 'magma',    w: 0.28, r: 21, hp: 90, dmg: 16, speed: 42, color: '#c1542c' },
+        { kind: 'ashWisp',  w: 0.32, r: 15, hp: 44, dmg: 12, speed: 50, color: '#e0b070', shoot: [1.4, 2.6] },
+      ],
+      boss: 'hydra',
+    },
+    {
+      id: 'elysium', name: 'Elysium', tag: 'The Blessed Fields',
+      blurb: 'Golden champions who expect a fair fight, and never stay down once.',
+      stars: 4,
+      // Palette: marble and gold, brighter than the rest so the realm reads as
+      // "above" the others even while it is the most punishing.
+      pal: { floorA: '#3a3618', floorB: '#141206', stone: ['#333014', '#2a2711', '#22200d'],
+             wall: '#0f0d04', lip0: '#4a441c', lip1: '#161405', edge: '#8a7a2e',
+             fog: 'rgba(255,236,160,0.05)', light: 'rgba(255,226,150,', accent: '#e8c445' },
+      props: ['cracks', 'rubble', 'bones', 'statues', 'vases', 'barriers', 'pillars', 'torches'],
+      hazard: null,
+      foes: [
+        { kind: 'hoplite', w: 0.42, r: 20, hp: 96,  dmg: 18, speed: 56, color: '#d9b64a', shield: 1 },
+        { kind: 'archer',  w: 0.30, r: 15, hp: 54,  dmg: 13, speed: 58, color: '#c9a24e', shoot: [1.3, 2.4] },
+        { kind: 'eidolon', w: 0.28, r: 16, hp: 70,  dmg: 15, speed: 62, color: '#b8d8ff', revive: 1 },
+      ],
+      boss: 'champions',
+    },
+    {
+      id: 'styx', name: 'Temple of Styx', tag: 'The Poisoned Temple',
+      blurb: 'Narrow halls, dripping venom, and rats that have eaten gods.',
+      stars: 4.5,
+      // Palette: sick green on cold stone; the props grow narrow and cramped.
+      pal: { floorA: '#16301f', floorB: '#06120b', stone: ['#122619', '#0e1f14', '#0a180f'],
+             wall: '#03100a', lip0: '#1c3a26', lip1: '#07160e', edge: '#2f6b45',
+             fog: 'rgba(90,220,130,0.06)', light: 'rgba(150,255,170,', accent: '#3fd06e',
+             tight: 1 },
+      props: ['cracks', 'rubble', 'bones', 'poisonPools', 'vases', 'barriers', 'pillars', 'torches'],
+      hazard: { kind: 'poison', dps: 0.11, tint: '#5ad07a' },
+      foes: [
+        { kind: 'satyr', w: 0.36, r: 16, hp: 84,  dmg: 19, speed: 80, color: '#7ad06a', shoot: [1.6, 2.8], poison: 1 },
+        { kind: 'rat',   w: 0.44, r: 11, hp: 46,  dmg: 15, speed: 124, color: '#9a8f78', pack: 1 },
+        { kind: 'spawn', w: 0.20, r: 17, hp: 76,  dmg: 18, speed: 56, color: '#5aa878' },
+      ],
+      boss: 'cerberus',
+    },
+    {
+      id: 'surface', name: 'The Surface', tag: 'The Last Door',
+      blurb: 'Snow, wind, and the god who put you here. Nothing holds back now.',
+      stars: 6,
+      // Palette: cold blue-white above ground, the one realm lit from above.
+      pal: { floorA: '#2a3550', floorB: '#0a0f1a', stone: ['#243049', '#1d273d', '#161e30'],
+             wall: '#060911', lip0: '#35476b', lip1: '#0c1220', edge: '#6f8fc4',
+             fog: 'rgba(200,220,255,0.06)', light: 'rgba(220,236,255,', accent: '#8fb8ff' },
+      props: ['cracks', 'rubble', 'bones', 'ice', 'vases', 'barriers', 'pillars', 'torches'],
+      hazard: { kind: 'cold', dps: 0.08, tint: '#9fd0ff' },
+      foes: [
+        { kind: 'revenant', w: 0.42, r: 20,  hp: 130, dmg: 22, speed: 66, color: '#b8c8e8', shield: 1, revive: 1 },
+        { kind: 'hunter',   w: 0.30, r: 15,  hp: 74,  dmg: 16, speed: 76, color: '#8fb8ff', shoot: [1.0, 2.0] },
+        { kind: 'herald',   w: 0.28, r: 19,  hp: 108, dmg: 20, speed: 54, color: '#e0e8ff', summon: 1 },
+      ],
+      boss: 'hades',
+    },
+  ];
+
   // Five arms, each with its own reach, cadence and drawing so a run feels
   // different depending on what is carried. Multipliers are applied to the
   // run's base damage, so boons keep working for every weapon.
@@ -1127,8 +1230,11 @@
   // foes into it.
   function buildRoom(w, h, door, entry, seed) {
     seedRng(seed);
+    // The realm is fixed by the floor, so a rebuild after a resume lands in the
+    // same place with the same look and the same kind of foe.
+    const realm = (typeof state !== 'undefined' && state && state.depth) ? realmOf(state.depth) : REALMS[0];
     room = { w, h, enemies: [], projectiles: [], t: 0, mist: [], fire: [], frost: [], floaters: [],
-             cleared: false, isBoss: state.depth % 5 === 0, seed, door, entry };
+             cleared: false, isBoss: state.depth % 5 === 0, seed, door, entry, realm: realm.id };
     state.player = { x: w / 2, y: h / 2, hx: 0, hy: 0, r: 15, kx: 0, ky: 0 };
 
     // The chamber is a room the hero walks through, not an arena: a road runs in
@@ -1146,10 +1252,17 @@
     room.bones = [];
     room.rubble = [];
     room.moss = [];
+    room.hazardPools = [];
+    room.hazard = realm.hazard;
+
+    // The realm decides which dressing is grown at all. A prop that a realm does
+    // not list is simply never rolled, so Asphodel carries no moss and Styx no
+    // torch-lit bone halls.
+    const has = (p) => realm.props.indexOf(p) >= 0;
 
     // torches run along the walls, spaced to the chamber's size
     const perSide = clamp(Math.round(Math.min(w, h) / 190), 2, 4);
-    for (let i = 1; i <= perSide; i++) {
+    for (let i = 1; i <= perSide && has('torches'); i++) {
       const k = i / (perSide + 1);
       for (const spot of [
         { x: w * k, y: 26 }, { x: w * k, y: h - 26 },
@@ -1166,7 +1279,7 @@
     // pillars in loose rows, which is what makes a large hall read as architecture
     const rows = clamp(Math.round(h / 260), 1, 3);
     const cols = clamp(Math.round(w / 300), 1, 3);
-    for (let r = 0; r < rows; r++) {
+    for (let r = 0; r < rows && has('pillars'); r++) {
       for (let c = 0; c < cols; c++) {
         const px = w * ((c + 0.5) / cols) + rand(-40, 40);
         const py = h * ((r + 0.5) / rows) + rand(-40, 40);
@@ -1184,7 +1297,10 @@
     // the room seed like the rest of the dressing, so a resume rebuilds them.
     room.barriers = [];
     const bcount = clamp(Math.round((w * h) / 200000), 2, 6);
-    for (let i = 0, guard = 0; i < bcount && guard < 80; guard++) {
+    // The Styx temple is a warren of tight halls: more, longer barriers chop the
+    // open floor into the small chambers the realm is described by.
+    const tight = realm.pal.tight ? 1 : 0;
+    for (let i = 0, guard = 0; i < (has('barriers') ? bcount + tight * 3 : 0) && guard < 120; guard++) {
       const bx = rand(70, w - 70), by = rand(70, h - 70);
       // Clear of the entrance the hero is dropped at and of the gate, so a barrier
       // never seals the way in or the way on. Slightly off the road, because the
@@ -1201,33 +1317,66 @@
       i++;
     }
 
-    for (let i = 0; i < randi(6, 12); i++) {
-      room.cracks.push({ x: rand(40, w - 40), y: rand(40, h - 40),
-                         a: rand(-30, 30), b: rand(-30, 30), c: rand(-22, 22), d: rand(-22, 22) });
+    if (has('cracks')) {
+      for (let i = 0; i < randi(6, 12); i++) {
+        room.cracks.push({ x: rand(40, w - 40), y: rand(40, h - 40),
+                           a: rand(-30, 30), b: rand(-30, 30), c: rand(-22, 22), d: rand(-22, 22) });
+      }
     }
     // rubble and bone settle near the walls and away from the road
-    for (let i = 0; i < randi(10, 20); i++) {
-      const rx = rand(30, w - 30), ry = rand(30, h - 30);
-      if (roadDistance(rx, ry) < 40) continue;
-      room.rubble.push({ x: rx, y: ry, r: rand(2.5, 6), seed: rand(0, 9) });
+    if (has('rubble')) {
+      for (let i = 0; i < randi(10, 20); i++) {
+        const rx = rand(30, w - 30), ry = rand(30, h - 30);
+        if (roadDistance(rx, ry) < 40) continue;
+        room.rubble.push({ x: rx, y: ry, r: rand(2.5, 6), seed: rand(0, 9) });
+      }
     }
-    for (let i = 0; i < randi(4, 10); i++) {
-      const bx = rand(30, w - 30), by = rand(30, h - 30);
-      if (roadDistance(bx, by) < 46) continue;
-      room.bones.push({ x: bx, y: by, a: rand(0, Math.PI), l: rand(9, 16) });
+    if (has('bones')) {
+      for (let i = 0; i < randi(4, 10); i++) {
+        const bx = rand(30, w - 30), by = rand(30, h - 30);
+        if (roadDistance(bx, by) < 46) continue;
+        room.bones.push({ x: bx, y: by, a: rand(0, Math.PI), l: rand(9, 16) });
+      }
     }
     // damp moss creeps in from the corners
-    for (let i = 0; i < randi(5, 12); i++) {
-      const mx = rand(0, w), my = rand(0, h);
-      const edge = Math.min(mx, my, w - mx, h - my);
-      if (edge > 120 || roadDistance(mx, my) < 50) continue;
-      room.moss.push({ x: mx, y: my, r: rand(18, 42), seed: rand(0, 9) });
+    if (has('moss')) {
+      for (let i = 0; i < randi(5, 12); i++) {
+        const mx = rand(0, w), my = rand(0, h);
+        const edge = Math.min(mx, my, w - mx, h - my);
+        if (edge > 120 || roadDistance(mx, my) < 50) continue;
+        room.moss.push({ x: mx, y: my, r: rand(18, 42), seed: rand(0, 9) });
+      }
     }
-    for (let i = 0; i < randi(4, 9); i++) {
-      const vx = rand(34, w - 34), vy = rand(34, h - 34);
-      if (Math.hypot(vx - w / 2, vy - h / 2) < 70) continue;
-      if (roadDistance(vx, vy) < 44) continue;
-      room.vases.push({ x: vx, y: vy, r: rand(8, 12), hp: 1 });
+    if (has('vases')) {
+      for (let i = 0; i < randi(4, 9); i++) {
+        const vx = rand(34, w - 34), vy = rand(34, h - 34);
+        if (Math.hypot(vx - w / 2, vy - h / 2) < 70) continue;
+        if (roadDistance(vx, vy) < 44) continue;
+        room.vases.push({ x: vx, y: vy, r: rand(8, 12), hp: 1 });
+      }
+    }
+
+    // Standing hazard pools — lava in Asphodel, poison in Styx. They are placed
+    // thickly enough to matter but never across the gate, the entry, or the green
+    // road: the hero has to be able to walk out of any chamber they walk into.
+    const poolProp = has('lavaPools') ? 'lavaPools' : has('poisonPools') ? 'poisonPools' : null;
+    if (poolProp && room.hazard) {
+      const want = realm.pal.tight ? 5 : 4;
+      for (let i = 0, guard = 0; i < want && guard < 90; guard++) {
+        const hx = rand(60, w - 60), hy = rand(60, h - 60);
+        const hr = rand(34, 60);
+        // The clearance is measured to the pool's own edge, not its centre, so
+        // a wide pool cannot reach across the gate, the entry or the green road.
+        if (Math.hypot(hx - room.door.x, hy - room.door.y) < 150 + hr) continue;
+        if (Math.hypot(hx - room.entry.x, hy - room.entry.y) < 130 + hr) continue;
+        if (roadDistance(hx, hy) < 52 + hr) continue;
+        if (room.pillars.some((pl) => Math.hypot(pl.x - hx, pl.y - hy) < 70 + hr)) continue;
+        if (room.barriers.some((o) => Math.hypot(o.x - hx, o.y - hy) < 90 + hr)) continue;
+        if (room.hazardPools.some((o) => Math.hypot(o.x - hx, o.y - hy) < 140 + hr)) continue;
+        room.hazardPools.push({ x: hx, y: hy, r: hr, seed: rand(0, 9),
+                                kind: room.hazard.kind, dps: room.hazard.dps });
+        i++;
+      }
     }
   }
 
@@ -1236,8 +1385,12 @@
       spawnBoss(depth);
     } else {
       // a larger hall holds more shades, or it would feel empty
+      const realm = realmOf(depth);
       const area = (room.w * room.h) / (900 * 620);
-      const n = clamp(Math.round((3 + depth * 0.9) * clamp(area, 1, 2.2)), 3, 22);
+      // A realm's roster is denser the later it sits. Styx and the Surface are
+      // meant to feel crowded: the rats come in packs and the heralds call more.
+      const crowding = 1 + realmIndex(depth) * 0.28;
+      const n = clamp(Math.round((3 + depth * 0.9) * clamp(area, 1, 2.2) * crowding), 3, 26);
       for (let i = 0; i < n; i++) spawnEnemy(depth);
     }
   }
@@ -1248,8 +1401,23 @@
     room.floaters.push({ x, y, text, heal: !!heal, t: 0.7 });
   }
 
+  // Pick a foe from the realm's roster by weight, then grow its stats from the
+  // realm's per-floor curve. Each realm carries its own numbers, so a Styx rat is
+  // fast and fragile where an Elysium hoplite is slow and armoured.
+  function rollFoe(realm) {
+    const total = realm.foes.reduce((a, f) => a + f.w, 0);
+    let r = Math.random() * total;
+    for (const f of realm.foes) { r -= f.w; if (r <= 0) return f; }
+    return realm.foes[realm.foes.length - 1];
+  }
+
   function spawnEnemy(depth) {
     const p = state.player;
+    const realm = realmOf(depth);
+    const idx = realmIndex(depth);
+    // Depth beyond the realm's first floor still adds, but the realm curve does
+    // most of the work so the jump between realms is what the player feels.
+    const over = depth - (idx * REALM_FLOORS + 1);
     let x, y, tries = 0;
     do {
       x = rand(40, room.w - 40); y = rand(40, room.h - 40); tries++;
@@ -1260,46 +1428,81 @@
     pushOutOfBarriers(spot, 18);
     x = spot.x; y = spot.y;
 
-    const roll = Math.random();
-    const tier = Math.min(3, Math.floor(depth / 3));
-    if (roll < 0.45 + tier * 0.05) {
-      room.enemies.push({ kind: 'shade', x, y, r: 14, hp: 26 + depth * 8, max: 26 + depth * 8,
-        speed: 74 + depth * 3.4, dmg: 8 + depth, color: '#8f7bd8', atk: 0 });
-    } else if (roll < 0.78) {
-      room.enemies.push({ kind: 'wraith', x, y, r: 16, hp: 40 + depth * 10, max: 40 + depth * 10,
-        speed: 46 + depth * 2, dmg: 11 + depth, color: '#4fc3d9', atk: 0, shoot: rand(1.2, 2.4) });
-    } else {
-      room.enemies.push({ kind: 'brute', x, y, r: 22, hp: 80 + depth * 20, max: 80 + depth * 20,
-        speed: 44 + depth * 1.6, dmg: 17 + depth * 1.4, color: '#d96a4f', atk: 0 });
-    }
+    const arche = rollFoe(realm);
+    const hp = Math.round((arche.hp + over * 9) * (1 + idx * 0.22));
+    const dmg = (arche.dmg + over * 1.1) * (1 + idx * 0.16);
+    const speed = arche.speed + over * 2.6;
+    const e = { kind: arche.kind, x, y, r: arche.r, hp, max: hp, dmg, speed,
+                color: arche.color, atk: 0, burn: 0, tier: idx };
+    if (arche.shoot) e.shoot = rand(arche.shoot[0], arche.shoot[1]);
+    if (arche.boom) e.boom = 1;
+    if (arche.shield) { e.shield = Math.round(hp * 0.4); e.shieldMax = e.shield; }
+    if (arche.revive) e.revive = 1;
+    if (arche.poison) e.poison = 1;
+    if (arche.pack) e.pack = 1;
+    if (arche.summon) { e.summon = 1; e.summonCd = rand(3.5, 6); }
+    if (arche.kind === 'magma') e.shoot = rand(1.8, 3.2);
+    room.enemies.push(e);
   }
+
+  // The five bosses, one per realm. A boss owns its name, its silhouette colour
+  // and its kit; the kit is read by the boss branch of the enemy loop, so a new
+  // boss means a new entry here plus a case there — never a rewrite.
+  // `parts` is how the encounter's health budget is divided between the boss's
+  // bodies, not how much health it has. The budget itself follows the ladder —
+  // every boss is five times the one before — so the fight's length is unchanged
+  // by the overhaul and only its shape and behaviour are. A two-body boss shares
+  // one budget across the pair, so the champions are not twice the fight.
+  const BOSSES = {
+    megaera:   { name: 'Megaera, the Vengeful',  color: '#c46bd8', kit: 'fury',
+                  parts: [1], r: 36, intro: 'The whip cracks before you see her.' },
+    hydra:     { name: 'The Bone Hydra',        color: '#7ad06a', kit: 'hydra',
+                  parts: [1], r: 42, intro: 'Heads rise from the lava, one after another.' },
+    champions: { name: 'Theseus & Asterius',    color: '#e8c445', kit: 'champions',
+                  parts: [0.55, 0.45], r: 34, intro: 'Two champions, and neither fights fair.' },
+    cerberus:  { name: 'Cerberus, Who Guards',  color: '#d96a4f', kit: 'hound',
+                  parts: [1], r: 46, intro: 'Three throats. One gate you may not pass.' },
+    hades:     { name: 'Hades, Lord of the Dead', color: '#9a7bff', kit: 'lord',
+                  parts: [1], r: 48, intro: 'You left my house. I will take you home.' },
+  };
 
   function spawnBoss(depth) {
     const tier = depth / 5;
-    room.bossName = ['The Warden of the Gate', 'Cerberus Born Again', 'The Bone Tyrant',
-                     'The Iron Judge', 'Kronos Unbound'][Math.min(4, tier - 1)] || 'The Warden';
+    const realm = realmOf(depth);
+    const def = BOSSES[realm.boss] || BOSSES.megaera;
+    room.bossName = def.name;
+    room.bossKit = def.kit;
     const spot = { x: room.w / 2, y: room.inset + 70 };
-    // The Warden is far too big to fit between the stones, so it is placed clear of
-    // them rather than being made to squeeze past.
-    pushOutOfBarriers(spot, 44);
-    // Every boss is five times the boss before it. The base is the depth-5
-    // Warden, so depth 10 is exactly 5x, depth 15 exactly 25x, and so on. Health
-    // takes the full curve; speed and damage take a gentler share of it, capped,
+    // The big ones are far too wide to fit between the stones, so they are placed
+    // clear of them rather than being made to squeeze past.
+    pushOutOfBarriers(spot, def.r + 6);
+    // Every boss is five times the boss before it. The base is the depth-5 boss,
+    // so depth 10 is exactly 5x, depth 15 exactly 25x, and so on. Health takes
+    // the full curve; speed and damage take a gentler, capped share of it,
     // because a boss that is both 625x tougher and 625x harder-hitting stops
     // being a fight and starts being a wall.
     const scale = Math.pow(5, Math.max(0, tier - 1));
     const BASE_HP = 340 + 5 * 95;
-    const hp = Math.round(BASE_HP * scale);
-    room.enemies.push({
-      kind: 'boss', x: spot.x, y: spot.y, r: 38,
-      hp, max: hp,
-      speed: Math.min(260, (46 + depth * 1.4) * (1 + (scale - 1) * 0.10)),
-      dmg: (20 + depth * 1.6) * Math.min(5, 1 + (scale - 1) * 0.07),
-      color: '#e0a44e',
-      atk: 0, shoot: 1.6, charging: 0, tier, scale,
+    // The encounter's budget is shared between the boss's bodies; a pair splits
+    // it, so two champions are one fight rather than two stacked on top.
+    def.parts.forEach((part, i) => {
+      const hp = Math.round(BASE_HP * scale * part);
+      // Offset the pair so they do not overlap and both are reachable.
+      const ox = def.parts.length > 1 ? (i === 0 ? -46 : 46) : 0;
+      room.enemies.push({
+        kind: 'boss', x: spot.x + ox, y: spot.y, r: def.r,
+        hp, max: hp,
+        speed: Math.min(260, (46 + depth * 1.4) * (1 + (scale - 1) * 0.10)),
+        dmg: (20 + depth * 1.6) * Math.min(5, 1 + (scale - 1) * 0.07),
+        color: def.color,
+        kit: def.kit, part: def.parts.length > 1 ? i : -1,
+        atk: 0, shoot: 1.6, charging: 0, charge2: 0, summonCd: rand(4, 7),
+        phase: 1, tier, scale,
+      });
     });
-    toast(room.bossName.toUpperCase() + ' blocks the way' +
+    toast(def.name.toUpperCase() + ' blocks the way' +
           (scale > 1 ? ' — ' + scale + '× the last' : ''));
+    if (def.intro) toast(def.intro);
   }
 
   // ---------------------------------------------------------------- combat
@@ -1547,6 +1750,20 @@
   }
 
   function hurtEnemy(e, amount, push, crit) {
+    // A shielded champion eats the blow with its guard first: the shield falls
+    // before the flesh, which is what makes its health bar read as two-stage.
+    if (e.shield > 0 && !e.reviving) {
+      const taken = Math.min(e.shield, amount);
+      e.shield -= taken;
+      amount -= taken;
+      e.hurt = 0.12;
+      floater(e.x + rand(-6, 6), e.y - e.r, 'BLOCK', true);
+      room.projectiles.push({ x: e.x, y: e.y, kind: 'impact', r: e.r + 6, t: 0.16, big: false });
+      if (e.shield <= 0) {
+        room.projectiles.push({ x: e.x, y: e.y, kind: 'nova', r: e.r * 2.2, t: 0.4, color: e.color });
+      }
+      if (amount <= 0) return;
+    }
     e.hp -= amount;
     e.burn = 0.12;
     e.hurt = 0.12;
@@ -1595,13 +1812,63 @@
   }
 
   function killEnemy(e) {
+    // A cinder is a bomb with legs: killing it at range is safe, killing it in
+    // your face is not.
+    if (e.boom) detonate(e);
+    // Elysium's blessed and the Surface's revenants get back up once. The count
+    // is on the foe, so a second death sticks.
+    if (e.revive && !e.hasRevived) {
+      e.hasRevived = 1;
+      e.hp = 0;
+      e.reviving = 1.1;
+      room.projectiles.push({ x: e.x, y: e.y, kind: 'nova', r: e.r * 2, t: 0.4, color: e.color });
+      return;
+    }
     e.dead = true;
     state.kills++;
-    state.xp += e.kind === 'boss' ? 60 : e.kind === 'brute' ? 8 : e.kind === 'wraith' ? 5 : 4;
-    state.obols += e.kind === 'boss' ? 120 : e.kind === 'brute' ? 12 : 6;
+    // Later realms pay better, which is the counterweight to their difficulty.
+    const worth = e.kind === 'boss' ? 60 : e.max > 80 ? 8 : e.max > 45 ? 5 : 4;
+    state.xp += worth;
+    state.obols += e.kind === 'boss' ? 120 : worth * 2;
     if (state.mist) room.mist.push({ x: e.x, y: e.y, r: 46, t: 4.5 });
     if ((state.se.attack || {}).fume) room.mist.push({ x: e.x, y: e.y, r: 44, t: 3.5 });
+    // The realm's farewell: what a body does when it comes apart.
+    deathBurst(e);
     levelUp();
+  }
+
+  // The kill reads differently per realm. Tartarus shades simply scatter, lava
+  // foes go up in sparks, Elysium's champions shed light, Styx melts into a
+  // puddle, and the Surface's dead come apart into frost.
+  function deathBurst(e) {
+    const realm = room.realm || 'tartarus';
+    const p = room.projectiles;
+    if (realm === 'asphodel') {
+      p.push({ x: e.x, y: e.y, kind: 'blast', r: e.r * 3.2, t: 0.4, color: '#ff8a3c' });
+      p.push({ x: e.x, y: e.y, kind: 'nova', r: e.r * 2.6, t: 0.35, color: '#ffb066' });
+      for (let i = 0; i < 8; i++) {
+        const a = rand(0, TAU), s = rand(80, 260);
+        p.push({ x: e.x, y: e.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: 2,
+                 kind: 'debris', t: rand(0.2, 0.5), color: '#ffca7a' });
+      }
+    } else if (realm === 'elysium') {
+      p.push({ x: e.x, y: e.y, kind: 'nova', r: e.r * 3.4, t: 0.5, color: '#ffe9a8' });
+      for (let i = 0; i < 6; i++) {
+        const a = rand(0, TAU), s = rand(70, 200);
+        p.push({ x: e.x, y: e.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: 2.4,
+                 kind: 'debris', t: rand(0.25, 0.6), color: '#fff3c4' });
+      }
+    } else if (realm === 'styx') {
+      room.mist.push({ x: e.x, y: e.y, r: 40, t: 2.6 });
+      p.push({ x: e.x, y: e.y, kind: 'impact', r: e.r * 2, t: 0.22, big: false });
+      room.hazardPools.push({ x: e.x, y: e.y, r: 30, seed: rand(0, 9), kind: 'poison',
+                              dps: 0.10, temp: 2.2 });
+    } else if (realm === 'surface') {
+      room.frost.push({ x: e.x, y: e.y, r: 34, t: 1.4 });
+      p.push({ x: e.x, y: e.y, kind: 'nova', r: e.r * 2.8, t: 0.4, color: '#bfeaff' });
+    } else {
+      p.push({ x: e.x, y: e.y, kind: 'impact', r: e.r + 14, t: 0.24, big: false });
+    }
   }
 
   function levelUp() {
@@ -1614,6 +1881,18 @@
     }
   }
   const xpNeeded = (lvl) => 14 + lvl * 9;
+
+  // Damage over time bypasses the invulnerability window that a blow grants, so
+  // standing in lava hurts every frame rather than once per three quarters of a
+  // second. It cannot kill outright: a hazard leaves the hero at 1 hp, which
+  // gives them a moment to walk out instead of dying to a floor tile.
+  function hazardDamage(amount, label) {
+    if (state.hp <= 0) return;
+    state.hp -= amount;
+    state.hazardT = 0.35;
+    if (state.hp <= 1) { state.hp = 1; }
+    if (Math.random() < 0.12) floater(state.player.x, state.player.y - 24, label, false);
+  }
 
   function damagePlayer(amount) {
     if (state.inv > 0) return;
@@ -1827,6 +2106,339 @@
     ctx.restore();
   }
 
+  // ------------------------------------------------------------- foe brains
+  // Every foe shares the walk-toward-the-hero base; the kind decides what it does
+  // once it is close. Keeping the brains here, away from the loop, is what lets a
+  // realm add a foe by naming a behaviour instead of threading a new branch
+  // through the simulation.
+  function walk(e, dx, dy, d, dt, slowMul, mul) {
+    const dir = steerAround(e, e.r, dx / d, dy / d);
+    const dl = Math.hypot(dir.x, dir.y) || 1;
+    e.x += (dir.x / dl) * e.speed * (mul == null ? 1 : mul) * slowMul * dt;
+    e.y += (dir.y / dl) * e.speed * (mul == null ? 1 : mul) * slowMul * dt;
+  }
+  const hurtMul = (e) => (e.weaken > 0 ? 0.6 : 1);
+
+  function foeAI(e, dt, slowMul, dx, dy, d, touching) {
+    switch (e.kind) {
+      case 'wraith': {
+        if (d > 170) walk(e, dx, dy, d, dt, slowMul);
+        e.shoot -= dt * slowMul;
+        if (e.shoot <= 0 && d < 420) {
+          e.shoot = rand(1.7, 3.1);
+          const a = Math.atan2(dy, dx);
+          room.projectiles.push({ x: e.x, y: e.y, vx: Math.cos(a) * 195, vy: Math.sin(a) * 195,
+            r: 7, dmg: 9 + state.depth, t: 4, kind: 'orb', hostile: true });
+        }
+        if (touching) damagePlayer(e.dmg * hurtMul(e) * 0.6);
+        break;
+      }
+      case 'ashWisp': {
+        // Drifts, keeps its distance, spits slow cinders.
+        if (d < 150) walk(e, dx, dy, d, dt, slowMul, -0.6);
+        else if (d > 260) walk(e, dx, dy, d, dt, slowMul, 0.6);
+        e.shoot -= dt * slowMul;
+        if (e.shoot <= 0 && d < 400) {
+          e.shoot = rand(1.7, 2.9);
+          const a = Math.atan2(dy, dx);
+          room.projectiles.push({ x: e.x, y: e.y, vx: Math.cos(a) * 165, vy: Math.sin(a) * 165,
+            r: 8, dmg: e.dmg, t: 4, kind: 'orb', hostile: true, ember: 1 });
+        }
+        if (touching) damagePlayer(e.dmg * hurtMul(e) * 0.5);
+        break;
+      }
+      case 'archer':      // Elysium: stops at range and looses arrows
+      case 'hunter': {
+        const keep = e.kind === 'hunter' ? 210 : 240;
+        if (d < keep * 0.8) walk(e, dx, dy, d, dt, slowMul, -0.8);
+        else if (d > keep) walk(e, dx, dy, d, dt, slowMul);
+        e.shoot -= dt * slowMul;
+        if (e.shoot <= 0 && d < 480) {
+          e.shoot = e.kind === 'hunter' ? rand(1.0, 1.9) : rand(1.4, 2.5);
+          const a = Math.atan2(dy, dx);
+          room.projectiles.push({ x: e.x, y: e.y, vx: Math.cos(a) * 300, vy: Math.sin(a) * 300,
+            r: 6, dmg: e.dmg, t: 3, kind: 'arrow', hostile: true });
+        }
+        if (touching) damagePlayer(e.dmg * hurtMul(e) * 0.6);
+        break;
+      }
+      case 'cinder': {
+        // Charges in and detonates. The blast is the whole point of the foe, so it
+        // fires on contact or on death, and the hero has to dash clear either way.
+        walk(e, dx, dy, d, dt, slowMul, 1.15);
+        if (touching && e.atk <= 0) { e.atk = 0.6; detonate(e); }
+        break;
+      }
+      case 'magma': {
+        walk(e, dx, dy, d, dt, slowMul, 0.8);
+        e.shoot -= dt * slowMul;
+        if (e.shoot <= 0 && d < 300) {
+          e.shoot = rand(1.8, 3.0);
+          const a = Math.atan2(dy, dx);
+          for (let i = -1; i <= 1; i++) {
+            room.projectiles.push({ x: e.x, y: e.y,
+              vx: Math.cos(a + i * 0.28) * 150, vy: Math.sin(a + i * 0.28) * 150,
+              r: 9, dmg: e.dmg, t: 3.4, kind: 'orb', hostile: true, ember: 1 });
+          }
+        }
+        if (touching && e.atk <= 0) { e.atk = 1.0; damagePlayer(e.dmg * hurtMul(e)); }
+        break;
+      }
+      case 'hoplite': {
+        // Armoured and patient, with a shield that soaks the first blows. Slower
+        // than the hero, so the answer is to get behind it.
+        walk(e, dx, dy, d, dt, slowMul);
+        if (touching && e.atk <= 0) { e.atk = 1.0; damagePlayer(e.dmg * hurtMul(e) * 1.15); }
+        break;
+      }
+      case 'eidolon': {
+        walk(e, dx, dy, d, dt, slowMul, 0.9);
+        if (touching && e.atk <= 0) { e.atk = 0.9; damagePlayer(e.dmg * hurtMul(e) * 0.8); }
+        break;
+      }
+      case 'revenant': {
+        walk(e, dx, dy, d, dt, slowMul, 0.85);
+        if (touching && e.atk <= 0) { e.atk = 1.0; damagePlayer(e.dmg * hurtMul(e) * 1.1); }
+        break;
+      }
+      case 'herald': {
+        // Hangs back and calls shades, which is what makes the Surface a war of
+        // attrition rather than a brawl.
+        if (d < 180) walk(e, dx, dy, d, dt, slowMul, -0.7);
+        else if (d > 300) walk(e, dx, dy, d, dt, slowMul, 0.7);
+        e.summonCd -= dt * slowMul;
+        if (e.summonCd <= 0) {
+          e.summonCd = rand(4.5, 7);
+          for (let i = 0; i < 2; i++) {
+            const a = rand(0, TAU), rr = rand(40, 90);
+            room.enemies.push({ kind: 'shade',
+              x: clamp(e.x + Math.cos(a) * rr, 50, room.w - 50),
+              y: clamp(e.y + Math.sin(a) * rr, 50, room.h - 50), r: 13,
+              hp: Math.round(e.max * 0.16), max: Math.round(e.max * 0.16),
+              dmg: e.dmg * 0.5, speed: 88, color: '#cdd8f0', atk: 0, burn: 0 });
+          }
+          room.projectiles.push({ x: e.x, y: e.y, kind: 'nova', r: 60, t: 0.5, color: '#cdd8f0' });
+        }
+        if (touching) damagePlayer(e.dmg * hurtMul(e) * 0.7);
+        break;
+      }
+      case 'satyr': {
+        // Keeps its distance and lobs venom that lingers where it lands.
+        if (d < 130) walk(e, dx, dy, d, dt, slowMul, -0.9);
+        else if (d > 240) walk(e, dx, dy, d, dt, slowMul, 0.8);
+        e.shoot -= dt * slowMul;
+        if (e.shoot <= 0 && d < 400) {
+          e.shoot = rand(1.6, 2.7);
+          const a = Math.atan2(dy, dx);
+          room.projectiles.push({ x: e.x, y: e.y, vx: Math.cos(a) * 210, vy: Math.sin(a) * 210,
+            r: 7, dmg: e.dmg, t: 3.5, kind: 'orb', hostile: true, venom: 1 });
+        }
+        if (touching) damagePlayer(e.dmg * hurtMul(e) * 0.6);
+        break;
+      }
+      case 'rat': {
+        // Fast and fragile, and rarely alone: a pack converges from several sides.
+        walk(e, dx, dy, d, dt, slowMul, 1.2);
+        if (touching) damagePlayer(e.dmg * hurtMul(e) * 0.7);
+        break;
+      }
+      case 'spawn': {
+        walk(e, dx, dy, d, dt, slowMul, 0.9);
+        if (touching) damagePlayer(e.dmg * hurtMul(e) * 0.9);
+        break;
+      }
+      case 'brute': {
+        walk(e, dx, dy, d, dt, slowMul);
+        if (e.atk <= 0 && touching) { e.atk = 0.9; damagePlayer(e.dmg * hurtMul(e)); }
+        break;
+      }
+      default: {
+        // shade, and anything else the realm table adds that only walks and bites
+        walk(e, dx, dy, d, dt, slowMul);
+        if (touching) damagePlayer(e.dmg * hurtMul(e) * 0.55);
+      }
+    }
+  }
+
+  // A cinder bursts on contact or on death: a short ring of shrapnel plus a hit
+  // on anything close, including the hero. Dash through it or kill it at range.
+  function detonate(e) {
+    kick(11);
+    room.projectiles.push({ x: e.x, y: e.y, kind: 'nova', r: e.r * 5, t: 0.45, color: '#ff8a3c' });
+    room.projectiles.push({ x: e.x, y: e.y, kind: 'blast', r: e.r * 3.4, t: 0.35, color: '#ffb066' });
+    const p = state.player;
+    if (Math.hypot(p.x - e.x, p.y - e.y) < e.r * 3.4 + p.r) damagePlayer(e.dmg * 1.4);
+    room.fire.push({ x: e.x, y: e.y, r: e.r * 2.6, t: 1.6 });
+  }
+
+  // ------------------------------------------------------------ boss brains
+  // Each realm's boss reads its own kit. The behaviours are deliberately shaped
+  // differently — a whip-and-dash duelist, a many-headed zoner, a pair that
+  // guards and charges, a three-maw hound, and a lord with two phases — so the
+  // fight changes character with the realm, not just in scale.
+  function bossAI(e, dt, slowMul, dx, dy, d, touching) {
+    const mul = (v) => e.dmg * hurtMul(e) * v;
+    const range = e.tier >= 1 ? 240 : 200;
+
+    // Hades turns nastier once he is halfway down.
+    if (e.kit === 'lord' && e.phase === 1 && e.hp < e.max * 0.5) {
+      e.phase = 2;
+      toast('HADES: Then you will learn what the throne costs.');
+      room.projectiles.push({ x: e.x, y: e.y, kind: 'nova', r: 220, t: 0.7, color: '#9a7bff' });
+      kick(14);
+    }
+
+    if (e.kit === 'fury') {
+      // Megaera closes fast and whips in a wide arc, retreating between strikes.
+      if (d > 90) walk(e, dx, dy, d, dt, slowMul, 1.35);
+      e.shoot -= dt * slowMul;
+      if (e.shoot <= 0) {
+        e.shoot = rand(0.9, 1.5);
+        const a = Math.atan2(dy, dx);
+        for (let i = -2; i <= 2; i++) {
+          room.projectiles.push({ x: e.x, y: e.y, vx: Math.cos(a + i * 0.22) * 240,
+            vy: Math.sin(a + i * 0.22) * 240, r: 7, dmg: e.dmg * 0.7, t: 2.6,
+            kind: 'orb', hostile: true });
+        }
+        if (Math.random() < 0.4) { e.charging = 0.4; e.cdir = { x: dx / d, y: dy / d }; }
+      }
+      chargeRun(e, dt, touching, 470, 0.9, mul);
+    } else if (e.kit === 'hydra') {
+      // The Hydra keeps its distance and floods the room in slow, spreading rings.
+      if (d < 200) walk(e, dx, dy, d, dt, slowMul, -0.8);
+      else if (d > 300) walk(e, dx, dy, d, dt, slowMul, 0.7);
+      e.shoot -= dt * slowMul;
+      if (e.shoot <= 0) {
+        e.shoot = Math.max(0.9, 1.9 - e.dmg * 0.01);
+        const heads = 3 + Math.min(4, Math.floor(state.depth / 6));
+        for (let i = 0; i < heads; i++) {
+          const a = (i / heads) * TAU + room.t * 0.6;
+          room.projectiles.push({ x: e.x, y: e.y, vx: Math.cos(a) * 165, vy: Math.sin(a) * 165,
+            r: 9, dmg: e.dmg * 0.6, t: 5, kind: 'orb', hostile: true, ember: 1 });
+        }
+      }
+      if (touching) damagePlayer(mul(1));
+    } else if (e.kit === 'champions') {
+      // Theseus hangs back and throws; Asterius charges the hero. Two bodies, two
+      // jobs, and killing one does not end the fight.
+      if (e.part === 0) {
+        if (d < 240) walk(e, dx, dy, d, dt, slowMul, -0.7);
+        e.shoot -= dt * slowMul;
+        if (e.shoot <= 0 && d < 460) {
+          e.shoot = rand(1.1, 1.8);
+          const a = Math.atan2(dy, dx);
+          for (let i = -1; i <= 1; i += 2) {
+            room.projectiles.push({ x: e.x, y: e.y, vx: Math.cos(a + i * 0.14) * 330,
+              vy: Math.sin(a + i * 0.14) * 330, r: 6, dmg: e.dmg * 0.8, t: 3,
+              kind: 'arrow', hostile: true });
+          }
+        }
+        if (touching) damagePlayer(mul(0.8));
+      } else {
+        if (d > 70) walk(e, dx, dy, d, dt, slowMul, 1.3);
+        e.shoot -= dt * slowMul;
+        if (e.shoot <= 0 && d < 420) { e.shoot = rand(2.0, 3.2); e.charging = 0.5; e.cdir = { x: dx / d, y: dy / d }; }
+        chargeRun(e, dt, touching, 460, 1.15, mul);
+      }
+    } else if (e.kit === 'hound') {
+      // Cerberus lunges, and between lunges spits a fan from each of three maws.
+      e.shoot -= dt * slowMul;
+      if (d > range) walk(e, dx, dy, d, dt, slowMul, 1.1);
+      if (e.shoot <= 0) {
+        e.shoot = rand(1.0, 1.7);
+        const a = Math.atan2(dy, dx);
+        for (const off of [-0.3, 0, 0.3]) {
+          for (let i = 0; i < 3; i++) {
+            room.projectiles.push({ x: e.x, y: e.y,
+              vx: Math.cos(a + off + (i - 1) * 0.09) * (170 + i * 30),
+              vy: Math.sin(a + off + (i - 1) * 0.09) * (170 + i * 30),
+              r: 8, dmg: e.dmg * 0.6, t: 3.6, kind: 'orb', hostile: true, ember: 1 });
+          }
+        }
+        if (Math.random() < 0.5) { e.charging = 0.5; e.cdir = { x: dx / d, y: dy / d }; }
+      }
+      e.summonCd -= dt * slowMul;
+      if (e.summonCd <= 0) {
+        e.summonCd = rand(6, 9);
+        for (let i = 0; i < 2; i++) {
+          const a = rand(0, TAU), rr = rand(60, 110);
+          room.enemies.push({ kind: 'shade',
+            x: clamp(e.x + Math.cos(a) * rr, 50, room.w - 50),
+            y: clamp(e.y + Math.sin(a) * rr, 50, room.h - 50), r: 14,
+            hp: Math.round(e.max * 0.05), max: Math.round(e.max * 0.05),
+            dmg: e.dmg * 0.4, speed: 92, color: '#c98a6a', atk: 0, burn: 0 });
+        }
+      }
+      chargeRun(e, dt, touching, 520, 1.2, mul);
+    } else if (e.kit === 'lord') {
+      // Hades: a ring, a fan, a step-through, and a summon. Phase two doubles the
+      // rate and adds a second fan behind the first.
+      const haste = e.phase === 2 ? 0.7 : 1;
+      if (d > range) walk(e, dx, dy, d, dt, slowMul);
+      e.shoot -= dt * slowMul;
+      if (e.shoot <= 0) {
+        e.shoot = Math.max(0.7, (1.6 - e.dmg * 0.01) * haste);
+        const shots = 6 + Math.min(8, Math.floor(state.depth / 2));
+        for (let i = 0; i < shots; i++) {
+          const a = (i / shots) * TAU + room.t;
+          room.projectiles.push({ x: e.x, y: e.y, vx: Math.cos(a) * 180, vy: Math.sin(a) * 180,
+            r: 8, dmg: e.dmg * 0.55, t: 4.5, kind: 'orb', hostile: true });
+        }
+        if (e.phase === 2) {
+          const a = Math.atan2(dy, dx);
+          for (let i = -3; i <= 3; i++) {
+            room.projectiles.push({ x: e.x, y: e.y, vx: Math.cos(a + i * 0.16) * 230,
+              vy: Math.sin(a + i * 0.16) * 230, r: 7, dmg: e.dmg * 0.6, t: 4,
+              kind: 'orb', hostile: true, ember: 1 });
+          }
+        }
+        if (Math.random() < (e.phase === 2 ? 0.6 : 0.3)) { e.charging = 0.45; e.cdir = { x: dx / d, y: dy / d }; }
+      }
+      e.summonCd -= dt * slowMul;
+      if (e.summonCd <= 0) {
+        e.summonCd = rand(7, 10);
+        for (let i = 0; i < 3; i++) {
+          const a = rand(0, TAU), rr = rand(70, 130);
+          room.enemies.push({ kind: 'shade',
+            x: clamp(e.x + Math.cos(a) * rr, 50, room.w - 50),
+            y: clamp(e.y + Math.sin(a) * rr, 50, room.h - 50), r: 14,
+            hp: Math.round(e.max * 0.03), max: Math.round(e.max * 0.03),
+            dmg: e.dmg * 0.45, speed: 96, color: '#b9a8ff', atk: 0, burn: 0 });
+        }
+      }
+      chargeRun(e, dt, touching, 500, 1.25, mul);
+    } else {
+      // A boss with no kit yet behaves as the original Warden: ring, then charge.
+      e.shoot -= dt * slowMul;
+      if (d > range) walk(e, dx, dy, d, dt, slowMul);
+      else if (e.shoot <= 0) {
+        e.shoot = Math.max(0.7, 1.7 - e.dmg * 0.012);
+        const shots = 5 + Math.min(7, Math.floor(state.depth / 2));
+        for (let i = 0; i < shots; i++) {
+          const a = (i / shots) * TAU + room.t;
+          room.projectiles.push({ x: e.x, y: e.y, vx: Math.cos(a) * 175, vy: Math.sin(a) * 175,
+            r: 8, dmg: 12 + state.depth, t: 4.5, kind: 'orb', hostile: true });
+        }
+        if (Math.random() < 0.35) { e.charging = 0.55; e.cdir = { x: dx / d, y: dy / d }; }
+      }
+      chargeRun(e, dt, touching, 430, 1.2, mul);
+    }
+  }
+
+  // A charge is a shove, not a dash: it is stopped by the same stone the hero is,
+  // so a barrier is cover from a boss too.
+  function chargeRun(e, dt, touching, speed, hitMul, mul) {
+    if (e.charging > 0) {
+      e.charging -= dt;
+      e.x += e.cdir.x * speed * dt; e.y += e.cdir.y * speed * dt;
+      const wall = (room.inset || 46) + e.r * 0.35;
+      e.x = clamp(e.x, wall, room.w - wall); e.y = clamp(e.y, wall, room.h - wall);
+      pushOutOfBarriers(e, e.r * 0.7);
+      if (touching) damagePlayer(mul(hitMul));
+    } else if (touching) damagePlayer(mul(1));
+  }
+
+
   function update(dt) {
     const p = state.player;
     room.t += dt;
@@ -1926,56 +2538,20 @@
       const touching = d < e.r + p.r + 4;
 
       if (e.kind === 'boss') {
-        e.shoot -= dt * slowMul;
-        const range = e.tier >= 1 ? 240 : 200;
-        if (d > range) {
-          const dir = steerAround(e, e.r, dx / d, dy / d);
-          const dl = Math.hypot(dir.x, dir.y) || 1;
-          e.x += (dir.x / dl) * e.speed * slowMul * dt;
-          e.y += (dir.y / dl) * e.speed * slowMul * dt;
-        } else if (e.shoot <= 0) {
-          e.shoot = Math.max(0.7, 1.7 - e.dmg * 0.012);
-          const shots = 5 + Math.min(7, Math.floor(state.depth / 2));
-          for (let i = 0; i < shots; i++) {
-            const a = (i / shots) * TAU + room.t;
-            room.projectiles.push({ x: e.x, y: e.y, vx: Math.cos(a) * 175, vy: Math.sin(a) * 175,
-              r: 8, dmg: 12 + state.depth, t: 4.5, kind: 'orb', hostile: true });
-          }
-          // charge attack on the horizontal axis
-          if (Math.random() < 0.35) { e.charging = 0.55; e.cdir = { x: dx / d, y: dy / d }; }
+        bossAI(e, dt, slowMul, dx, dy, d, touching);
+      } else if (e.reviving > 0) {
+        // A champion that went down is out of the fight until it rises; it cannot
+        // be hit and cannot hit back, so the revive is a window, not a trick.
+        e.reviving -= dt;
+        if (e.reviving <= 0) {
+          e.hp = Math.round(e.max * 0.55);
+          e.reviving = 0;
+          e.hurt = 0.2;
+          floater(e.x, e.y - e.r, 'BACK', true);
+          room.projectiles.push({ x: e.x, y: e.y, kind: 'nova', r: e.r * 2.4, t: 0.5, color: e.color });
         }
-        if (e.charging > 0) {
-          e.charging -= dt;
-          // A charge is a shove, not a dash: it is stopped by the same stone the
-          // hero is, so a barrier is cover from the boss too.
-          e.x += e.cdir.x * 430 * dt; e.y += e.cdir.y * 430 * dt;
-          const wall = (room.inset || 46) + e.r * 0.35;
-          e.x = clamp(e.x, wall, room.w - wall); e.y = clamp(e.y, wall, room.h - wall);
-          pushOutOfBarriers(e, e.r * 0.7);
-          if (touching) damagePlayer(e.dmg * (e.weaken > 0 ? 0.6 : 1) * 1.2);
-        } else if (touching) damagePlayer(e.dmg * (e.weaken > 0 ? 0.6 : 1));
-      } else if (e.kind === 'wraith') {
-        if (d > 170) {
-          const dir = steerAround(e, e.r, dx / d, dy / d);
-          const dl = Math.hypot(dir.x, dir.y) || 1;
-          e.x += (dir.x / dl) * e.speed * slowMul * dt;
-          e.y += (dir.y / dl) * e.speed * slowMul * dt;
-        }
-        e.shoot -= dt * slowMul;
-        if (e.shoot <= 0 && d < 420) {
-          e.shoot = rand(1.7, 3.1);
-          const a = Math.atan2(dy, dx);
-          room.projectiles.push({ x: e.x, y: e.y, vx: Math.cos(a) * 195, vy: Math.sin(a) * 195,
-            r: 7, dmg: 9 + state.depth, t: 4, kind: 'orb', hostile: true });
-        }
-        if (touching) damagePlayer(e.dmg * (e.weaken > 0 ? 0.6 : 1) * 0.6);
       } else {
-        const dir = steerAround(e, e.r, dx / d, dy / d);
-        const dl = Math.hypot(dir.x, dir.y) || 1;
-        e.x += (dir.x / dl) * e.speed * slowMul * dt;
-        e.y += (dir.y / dl) * e.speed * slowMul * dt;
-        if (e.kind === 'brute' && e.atk <= 0 && touching) { e.atk = 0.9; damagePlayer(e.dmg * (e.weaken > 0 ? 0.6 : 1)); }
-        else if (e.kind === 'shade' && touching) damagePlayer(e.dmg * (e.weaken > 0 ? 0.6 : 1) * 0.55);
+        foeAI(e, dt, slowMul, dx, dy, d, touching);
       }
       e.atk = Math.max(0, (e.atk || 0) - dt);
       e.x += (e.kx || 0) * dt; e.y += (e.ky || 0) * dt;
@@ -2070,7 +2646,12 @@
       if (pr.x < 0 || pr.y < 0 || pr.x > room.w || pr.y > room.h) pr.t = 0;
       if (pr.hostile) {
         if (Math.hypot(pr.x - p.x, pr.y - p.y) < pr.r + p.r) {
-          damagePlayer(pr.dmg); pr.t = 0;
+          damagePlayer(pr.dmg);
+          // Satyr venom does not just sting, it pools where it lands, so the
+          // ground it soaked is unsafe for a few seconds afterwards.
+          if (pr.venom) room.hazardPools.push({ x: pr.x, y: pr.y, r: 40, seed: rand(0, 9),
+                                                kind: 'poison', dps: 0.16, temp: rand(3, 4.5) });
+          pr.t = 0;
         }
       } else if (pr.dmg) {
         // Fired arrows carry their damage until they find a body.
@@ -2106,6 +2687,18 @@
       }
     }
     room.fire = room.fire.filter((f) => f.t > 0);
+
+    // Standing hazard pools, and the venom satyr shots leave behind. The pool
+    // hurts only the hero — the dead have no blood left to burn — and it is the
+    // realm's whole point: Asphodel and Styx are places you move through carefully.
+    for (const h of room.hazardPools || []) {
+      if (h.temp != null) { h.temp -= dt; if (h.temp <= 0) h.spent = true; }
+      if (h.spent) continue;
+      if (Math.hypot(p.x - h.x, p.y - h.y) < h.r + p.r * 0.4) {
+        hazardDamage(state.maxHp * h.dps * dt, h.kind === 'lava' ? 'BURN' : h.kind === 'cold' ? 'FROST' : 'VENOM');
+      }
+    }
+    room.hazardPools = (room.hazardPools || []).filter((h) => !h.spent);
 
     // Frozen ground left by a frost dash: it chills whoever walks over it, so
     // the trail keeps working after the dash itself has ended.
@@ -2663,6 +3256,48 @@
     drawDust(t / 1000);
     drawMinimap();
     drawVignette();
+    // The realm's atmosphere sits over the chamber but under the HUD: a wash of
+    // coloured fog that tells the eye which layer of the underworld this is.
+    drawRealmFog(t / 1000);
+  }
+
+  // A realm-tinted haze. It is drawn last inside the world transform so it covers
+  // floor, foes and hero alike, which is what makes it read as air rather than as
+  // a filter on the floor.
+  function drawRealmFog(t) {
+    const realm = realmOf(state.depth) || REALMS[0];
+    const pal = realm.pal;
+    // Drifting patches, so the haze is not a flat overlay.
+    ctx.save();
+    for (let i = 0; i < 3; i++) {
+      const ph = (t * (0.05 + i * 0.02) + i * 0.37) % 1;
+      const y = room.h * (0.15 + ph * 0.7);
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = pal.fog;
+      ctx.beginPath();
+      ctx.ellipse(room.w * (0.3 + i * 0.22) + Math.sin(t * 0.3 + i) * 60, y,
+                  room.w * 0.42, room.h * 0.16, 0, 0, TAU);
+      ctx.fill();
+    }
+    // Asphodel gets a low heat shimmer along the floor line; the Surface a cold
+    // white wash at the top.
+    if (realm.id === 'asphodel') {
+      const g = ctx.createLinearGradient(0, room.h, 0, room.h * 0.4);
+      g.addColorStop(0, 'rgba(255,110,40,0.10)');
+      g.addColorStop(1, 'rgba(255,110,40,0)');
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, room.w, room.h);
+    } else if (realm.id === 'surface') {
+      const g = ctx.createLinearGradient(0, 0, 0, room.h * 0.6);
+      g.addColorStop(0, 'rgba(200,225,255,0.10)');
+      g.addColorStop(1, 'rgba(200,225,255,0)');
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, room.w, room.h);
+    }
+    ctx.globalAlpha = 1;
+    ctx.restore();
   }
 
   // ------------------------------------------------------------------- art
@@ -2670,9 +3305,10 @@
   // the whole game stays a single offline HTML file.
 
   function drawFloor(t) {
+    const pal = (realmOf(state.depth) || REALMS[0]).pal;
     const g = ctx.createRadialGradient(room.w / 2, room.h / 2, 30, room.w / 2, room.h / 2, Math.max(room.w, room.h) * 0.72);
-    g.addColorStop(0, '#241338');
-    g.addColorStop(1, '#0c0717');
+    g.addColorStop(0, pal.floorA);
+    g.addColorStop(1, pal.floorB);
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, room.w, room.h);
 
@@ -2685,7 +3321,7 @@
         const px0 = x + off, py0 = y;
         const jitter = ((px0 * 13 + py0 * 7) % 17) / 17;
         if (jitter < 0.1) continue;
-        const shade = jitter < 0.4 ? '#1c112d' : jitter < 0.72 ? '#170e26' : '#130a20';
+        const shade = jitter < 0.4 ? pal.stone[0] : jitter < 0.72 ? pal.stone[1] : pal.stone[2];
         ctx.fillStyle = shade;
         ctx.fillRect(px0 + 2, py0 + 2, T - 4, T - 4);
         // a lit top-left edge and a dark bottom-right one gives the stone depth
@@ -2739,11 +3375,39 @@
     }
 
     // sealing runes around the gate ring
-    ctx.strokeStyle = '#6a4bd433';
+    ctx.strokeStyle = pal.accent + '33';
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(room.w / 2, room.h / 2, 46, 0, TAU);
     ctx.stroke();
+
+    // Standing hazard pools: lava is drawn hot and moving, poison as a sick
+    // green film, and both pulse so they read as dangerous rather than as decor.
+    for (const h of room.hazardPools || []) {
+      const hot = h.kind === 'lava';
+      const cold = h.kind === 'cold';
+      const pulse = 0.78 + Math.sin(t * 3 + h.seed) * 0.12;
+      const hg = ctx.createRadialGradient(h.x, h.y, 2, h.x, h.y, h.r * pulse);
+      if (hot) {
+        hg.addColorStop(0, 'rgba(255,240,190,0.92)');
+        hg.addColorStop(0.35, 'rgba(255,150,50,0.75)');
+        hg.addColorStop(1, 'rgba(180,40,10,0.18)');
+      } else if (cold) {
+        hg.addColorStop(0, 'rgba(240,250,255,0.75)');
+        hg.addColorStop(1, 'rgba(140,190,255,0.14)');
+      } else {
+        hg.addColorStop(0, 'rgba(150,240,160,0.7)');
+        hg.addColorStop(0.5, 'rgba(70,180,90,0.42)');
+        hg.addColorStop(1, 'rgba(30,90,45,0.12)');
+      }
+      ctx.fillStyle = hg;
+      ctx.beginPath(); ctx.arc(h.x, h.y, h.r * pulse, 0, TAU); ctx.fill();
+      // a bright rim, so the edge of the safe ground is unmistakable
+      ctx.strokeStyle = hot ? 'rgba(255,190,110,0.55)'
+                        : cold ? 'rgba(200,235,255,0.5)' : 'rgba(140,240,160,0.45)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(h.x, h.y, h.r * pulse, 0, TAU); ctx.stroke();
+    }
   }
 
   // The wall that rings the chamber. Drawn after the floor and before anything
@@ -2751,10 +3415,11 @@
   function drawWalls(t) {
     const inset = room.inset || 46;
     const w = room.w, h = room.h;
+    const pal = (realmOf(state.depth) || REALMS[0]).pal;
 
     // the wall band itself: lit near the top edge, falling into shadow at the
     // bottom, which is what sells a floor plane receding away from the viewer
-    ctx.fillStyle = '#0a0514';
+    ctx.fillStyle = pal.wall;
     ctx.fillRect(0, 0, w, inset);
     ctx.fillRect(0, h - inset, w, inset);
     ctx.fillRect(0, 0, inset, h);
@@ -2762,8 +3427,8 @@
 
     // a shallow inner lip so the wall has thickness
     const lip = ctx.createLinearGradient(0, 0, 0, inset);
-    lip.addColorStop(0, '#241634');
-    lip.addColorStop(1, '#0d0719');
+    lip.addColorStop(0, pal.lip0);
+    lip.addColorStop(1, pal.lip1);
     ctx.fillStyle = lip;
     ctx.fillRect(0, 0, w, 10);
     ctx.fillRect(0, h - 10, w, 10);
@@ -2792,7 +3457,7 @@
     }
 
     // the inner edge, drawn as a hard line so the playfield boundary is legible
-    ctx.strokeStyle = '#3b2a54';
+    ctx.strokeStyle = pal.edge;
     ctx.lineWidth = 2;
     ctx.strokeRect(inset, inset, w - inset * 2, h - inset * 2);
   }
@@ -2964,20 +3629,23 @@
 
       const flick = 0.78 + Math.sin(t * 13 + f.seed) * 0.12 + Math.sin(t * 29 + f.seed * 2) * 0.06;
       const r = f.light * flick;
+      const pal = (realmOf(state.depth) || REALMS[0]).pal;
       const g = ctx.createRadialGradient(f.x, f.y, 4, f.x, f.y, r);
-      g.addColorStop(0, 'rgba(255,196,110,0.42)');
-      g.addColorStop(0.45, 'rgba(255,140,60,0.14)');
-      g.addColorStop(1, 'rgba(255,120,40,0)');
+      g.addColorStop(0, pal.light + '0.42)');
+      g.addColorStop(0.45, pal.light + '0.14)');
+      g.addColorStop(1, pal.light + '0)');
       ctx.fillStyle = g;
       ctx.beginPath(); ctx.arc(f.x, f.y, r, 0, TAU); ctx.fill();
 
-      // layered flame
+      // layered flame, tinted by the realm: a Temple torch burns green, a
+      // Surface brazier white-blue, the deep ones ordinary fire
       const h = 24 * flick;
+      const fl = realmFlame(state.depth);
       for (let i = 0; i < 3; i++) {
         const sc = 1 - i * 0.28;
         const sway = Math.sin(t * 9 + f.seed + i) * 2.4;
         ctx.globalAlpha = i === 0 ? 0.95 : 0.6;
-        ctx.fillStyle = ['#ff7a2f', '#ffb347', '#ffe9a8'][i];
+        ctx.fillStyle = fl[i];
         ctx.beginPath();
         ctx.moveTo(f.x - 6 * sc, f.y - 2);
         ctx.quadraticCurveTo(f.x - 3 * sc + sway, f.y - h * sc * 0.7, f.x + sway, f.y - h * sc);
@@ -2990,12 +3658,23 @@
       for (let i = 0; i < 2; i++) {
         const ph = (t * 0.7 + f.seed + i * 0.5) % 1;
         ctx.globalAlpha = (1 - ph) * 0.7;
-        ctx.fillStyle = '#ffca7a';
+        ctx.fillStyle = fl[2];
         ctx.beginPath();
         ctx.arc(f.x + Math.sin((t + i) * 3) * 8, f.y - 14 - ph * 46, 1.6, 0, TAU);
         ctx.fill();
       }
       ctx.globalAlpha = 1;
+    }
+  }
+
+  // The three flame tones a realm's torches burn in.
+  function realmFlame(depth) {
+    switch (realmOf(depth).id) {
+      case 'asphodel': return ['#ff5a1e', '#ff9a3c', '#ffd08a'];
+      case 'styx':     return ['#2fbf5a', '#7fe08a', '#c8ffd4'];
+      case 'surface':  return ['#6fa8ff', '#a8c8ff', '#eaf2ff'];
+      case 'elysium':  return ['#e8a020', '#ffd060', '#fff2c0'];
+      default:         return ['#ff7a2f', '#ffb347', '#ffe9a8'];
     }
   }
 
@@ -3190,6 +3869,17 @@
   // Every character is built from the same primitives so the light direction,
   // the rim and the ground shadow stay consistent across the roster.
   const RIM = 'rgba(255,238,205,0.5)';
+
+  // Blend two #rrggbb colours. The roster is drawn from a handful of primitives,
+  // so shading a foe by its own colour is what lets one draw routine serve every
+  // realm's version of a shape.
+  function mixHex(a, b, t) {
+    const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+    const r = Math.round((pa >> 16) * (1 - t) + (pb >> 16) * t);
+    const g = Math.round(((pa >> 8) & 255) * (1 - t) + ((pb >> 8) & 255) * t);
+    const bl = Math.round((pa & 255) * (1 - t) + (pb & 255) * t);
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1);
+  }
 
   function limb(x1, y1, x2, y2, w, color, cap) {
     ctx.strokeStyle = color;
@@ -3713,11 +4403,28 @@
     ctx.translate(e.x, e.y);
     const flash = e.hurt > 0;
     const tint = (c) => (flash ? '#ffffff' : c);
+    // A foe that is down and waiting to rise is drawn faint and low, so the
+    // revive window is legible instead of looking like a bug.
+    if (e.reviving > 0) ctx.globalAlpha = 0.45;
 
     if (e.kind === 'boss') drawBoss(e, t, tint, flash);
     else if (e.kind === 'brute') drawBrute(e, t, tint);
     else if (e.kind === 'wraith') drawWraith(e, t, tint);
+    else if (e.kind === 'cinder' || e.kind === 'magma') drawLava(e, t, tint);
+    else if (e.kind === 'hoplite' || e.kind === 'revenant') drawHoplite(e, t, tint, flash);
+    else if (e.kind === 'rat') drawRat(e, t, tint);
     else drawShade(e, t, tint);
+
+    // A live shield is worn as a ring around the body, so armour is visible
+    // before the health bar moves.
+    if (e.shield > 0 && e.shieldMax) {
+      ctx.globalAlpha = 0.5 + 0.3 * (e.shield / e.shieldMax);
+      ctx.strokeStyle = e.kind === 'revenant' ? '#cfe4ff' : '#ffe08a';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(0, 0, e.r + 7, 0, TAU); ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    ctx.globalAlpha = 1;
 
     ctx.restore();
 
@@ -3731,17 +4438,130 @@
       g.addColorStop(1, e.kind === 'boss' ? '#ff9d5d' : '#ff9db0');
       ctx.fillStyle = g;
       ctx.fillRect(e.x - w / 2, y, w * clamp(e.hp / e.max, 0, 1), 5);
+      // The shield is a pale sleeve drawn over the health, so one glance answers
+      // "how much guard is left" and "how much flesh is left".
+      if (e.shield > 0 && e.shieldMax) {
+        ctx.fillStyle = e.kind === 'revenant' ? '#9fc4ff' : '#ffd479';
+        ctx.fillRect(e.x - w / 2, y - 4, w * clamp(e.shield / e.shieldMax, 0, 1), 3);
+      }
     }
   }
 
+  // ---- lava foes: a cracked body with fire in the seams. Drawn for both the
+  // kamikaze cinder and the heavier magma, scaled by the body's own radius.
+  function drawLava(e, t, tint) {
+    shadowUnder(0, e.r * 0.95, e.r * 1.05, e.r * 0.4);
+    const glow = 0.7 + Math.sin(t * 7 + e.x) * 0.3;
+    const g = ctx.createRadialGradient(0, 0, e.r * 0.2, 0, 0, e.r * 1.5);
+    g.addColorStop(0, `rgba(255,220,140,${0.5 * glow})`);
+    g.addColorStop(1, 'rgba(255,90,30,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(0, 0, e.r * 1.5, 0, TAU); ctx.fill();
+
+    ctx.fillStyle = tint('#3a1a12');
+    ctx.beginPath(); ctx.arc(0, 0, e.r, 0, TAU); ctx.fill();
+    ctx.strokeStyle = tint('#8a3a1c');
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // seams of fire
+    ctx.strokeStyle = tint(`rgba(255,${140 + glow * 70},60,0.95)`);
+    ctx.lineWidth = 2.4;
+    for (let i = 0; i < 4; i++) {
+      const a = i * 1.57 + t * 0.6;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * e.r * 0.2, Math.sin(a) * e.r * 0.2);
+      ctx.lineTo(Math.cos(a + 0.3) * e.r * 0.72, Math.sin(a + 0.3) * e.r * 0.72);
+      ctx.stroke();
+    }
+    // two hot eyes
+    ellipse(-e.r * 0.3, -e.r * 0.25, e.r * 0.16, e.r * 0.16, 0, '#ffe9a8');
+    ellipse(e.r * 0.3, -e.r * 0.25, e.r * 0.16, e.r * 0.16, 0, '#ffe9a8');
+  }
+
+  // ---- armoured champion: a helmeted body behind a round shield. Used for the
+  // Elysium hoplite and the Surface revenant, which differ only in colour.
+  function drawHoplite(e, t, tint, flash) {
+    shadowUnder(0, e.r * 0.95, e.r * 1.1, e.r * 0.4);
+    // spear
+    ctx.save();
+    ctx.rotate(-0.5 + Math.sin(t * 2) * 0.05);
+    ctx.strokeStyle = tint('#8a7a4a');
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(e.r * 0.3, e.r * 0.4); ctx.lineTo(e.r * 1.5, -e.r * 0.9); ctx.stroke();
+    ctx.fillStyle = tint('#dfe6f0');
+    ctx.beginPath();
+    ctx.moveTo(e.r * 1.5, -e.r * 0.9);
+    ctx.lineTo(e.r * 1.75, -e.r * 1.15);
+    ctx.lineTo(e.r * 1.3, -e.r * 1.2);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+
+    // body
+    const g = ctx.createLinearGradient(-e.r, -e.r, e.r, e.r);
+    g.addColorStop(0, tint(e.color));
+    g.addColorStop(1, tint('#4a4030'));
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(-e.r * 0.7, e.r * 0.6);
+    ctx.quadraticCurveTo(0, -e.r * 1.0, e.r * 0.7, e.r * 0.6);
+    ctx.closePath(); ctx.fill();
+    // helmet
+    ellipse(0, -e.r * 0.5, e.r * 0.42, e.r * 0.46, 0, tint(e.color));
+    ctx.fillStyle = tint('#2a2418');
+    ctx.fillRect(-e.r * 0.34, -e.r * 0.58, e.r * 0.68, e.r * 0.16);
+    // crest
+    ctx.fillStyle = tint(e.kind === 'revenant' ? '#cfe4ff' : '#d94f4f');
+    ctx.beginPath();
+    ctx.moveTo(0, -e.r * 0.95);
+    ctx.quadraticCurveTo(e.r * 0.2, -e.r * 0.6, 0, -e.r * 0.3);
+    ctx.quadraticCurveTo(-e.r * 0.2, -e.r * 0.6, 0, -e.r * 0.95);
+    ctx.closePath(); ctx.fill();
+    // round shield, kept in front of the body
+    const sg = ctx.createRadialGradient(-e.r * 0.2, 0, 2, -e.r * 0.2, 0, e.r * 0.72);
+    sg.addColorStop(0, tint('#f0e0a8'));
+    sg.addColorStop(1, tint('#8a6a2a'));
+    ctx.fillStyle = sg;
+    ctx.beginPath(); ctx.arc(-e.r * 0.2, e.r * 0.05, e.r * 0.72, 0, TAU); ctx.fill();
+    ctx.strokeStyle = tint('#5a4418');
+    ctx.lineWidth = 2.4;
+    ctx.stroke();
+    ctx.fillStyle = tint('#5a4418');
+    ctx.beginPath(); ctx.arc(-e.r * 0.2, e.r * 0.05, e.r * 0.16, 0, TAU); ctx.fill();
+  }
+
+  // ---- rat: a low, quick body with a long tail, drawn small so a swarm reads.
+  function drawRat(e, t, tint) {
+    shadowUnder(0, e.r * 0.9, e.r * 1.2, e.r * 0.3);
+    ctx.fillStyle = tint('#4a4438');
+    ctx.beginPath(); ctx.ellipse(0, 0, e.r * 1.15, e.r * 0.8, 0, 0, TAU); ctx.fill();
+    ctx.beginPath(); ctx.arc(e.r * 0.85, -e.r * 0.1, e.r * 0.5, 0, TAU); ctx.fill();
+    // snout and ear
+    ctx.beginPath(); ctx.moveTo(e.r * 1.3, -e.r * 0.1); ctx.lineTo(e.r * 1.65, 0); ctx.lineTo(e.r * 1.3, e.r * 0.18);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = tint('#7a7260');
+    ctx.beginPath(); ctx.arc(e.r * 0.7, -e.r * 0.5, e.r * 0.3, 0, TAU); ctx.fill();
+    ctx.fillStyle = tint('#c94f4f');
+    ctx.beginPath(); ctx.arc(e.r * 1.1, -e.r * 0.18, e.r * 0.12, 0, TAU); ctx.fill();
+    // tail
+    ctx.strokeStyle = tint('#5a5244');
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-e.r * 1.1, 0);
+    ctx.quadraticCurveTo(-e.r * 1.9, Math.sin(t * 8) * e.r * 0.5, -e.r * 2.3, 0);
+    ctx.stroke();
+  }
+
   // ---- shade: a hooded wraith. The cloak is drawn in three depths so the
-  // figure has a front and a back instead of reading as one flat cone.
+  // figure has a front and a back instead of reading as one flat cone. The tone
+  // comes from the foe's own colour, so a Temple summon wears green and the
+  // Surface's summoned dead wear frost.
   function drawShade(e, t, tint) {
     shadowUnder(0, e.r * 0.95, e.r * 0.95, e.r * 0.36);
     const wob = Math.sin(t * 4 + e.x) * 1.5;
+    const base = e.color || '#8f7bd8';
 
     // back fold, darkest
-    ctx.fillStyle = tint('#2e1f5c');
+    ctx.fillStyle = tint(mixHex(base, '#000000', 0.5));
     ctx.beginPath();
     ctx.moveTo(-e.r * 0.35, -e.r * 1.5);
     ctx.quadraticCurveTo(-e.r * 1.5, -e.r * 0.6, -e.r * 1.15, e.r * 0.7 + wob);
@@ -3751,9 +4571,9 @@
 
     // main cloak, ragged hem
     const g = ctx.createLinearGradient(0, -e.r * 1.5, 0, e.r);
-    g.addColorStop(0, tint('#c4b6f5'));
-    g.addColorStop(0.45, tint('#8a72d8'));
-    g.addColorStop(1, tint('#40307a'));
+    g.addColorStop(0, tint(mixHex(base, '#ffffff', 0.45)));
+    g.addColorStop(0.45, tint(base));
+    g.addColorStop(1, tint(mixHex(base, '#000000', 0.45)));
     ctx.fillStyle = g;
     ctx.beginPath();
     ctx.moveTo(0, -e.r * 1.55);
@@ -3765,19 +4585,19 @@
     ctx.quadraticCurveTo(-e.r * 1.15, -e.r * 0.7, -e.r * 0.25, -e.r * 1.5);
     ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = '#2b1c4a';
+    ctx.strokeStyle = tint(mixHex(base, '#000000', 0.65));
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
     // hood, deep and pointed, with the face void inside
-    ctx.fillStyle = tint('#5b46a5');
+    ctx.fillStyle = tint(mixHex(base, '#000000', 0.25));
     ctx.beginPath();
     ctx.moveTo(0, -e.r * 1.85);
     ctx.quadraticCurveTo(e.r * 0.92, -e.r * 1.35, e.r * 0.66, -e.r * 0.5);
     ctx.quadraticCurveTo(0, -e.r * 0.28, -e.r * 0.66, -e.r * 0.5);
     ctx.quadraticCurveTo(-e.r * 0.92, -e.r * 1.35, 0, -e.r * 1.85);
     ctx.fill();
-    ctx.strokeStyle = '#2b1c4a';
+    ctx.strokeStyle = tint(mixHex(base, '#000000', 0.65));
     ctx.lineWidth = 1.4;
     ctx.stroke();
     ctx.fillStyle = '#170e2e';
@@ -3796,8 +4616,8 @@
     ctx.shadowBlur = 0;
 
     // skeletal reaching arms
-    limb(-e.r * 0.62, -e.r * 0.5, -e.r * 1.15, e.r * 0.15, 3.4, tint('#6f5bbd'));
-    limb(e.r * 0.62, -e.r * 0.5, e.r * 1.15, e.r * 0.15, 3.4, tint('#6f5bbd'));
+    limb(-e.r * 0.62, -e.r * 0.5, -e.r * 1.15, e.r * 0.15, 3.4, tint(mixHex(base, '#ffffff', 0.2)));
+    limb(e.r * 0.62, -e.r * 0.5, e.r * 1.15, e.r * 0.15, 3.4, tint(mixHex(base, '#ffffff', 0.2)));
     ellipse(-e.r * 1.18, e.r * 0.22, 2.6, 3.1, 0, '#d9cfe8');
     ellipse(e.r * 1.18, e.r * 0.22, 2.6, 3.1, 0, '#d9cfe8');
 
@@ -4271,13 +5091,22 @@
     }
     if (pr.kind === 'nova') {
       // The spell sweeps out from the hero and fades, so its reach is legible.
+      // A tinted nova — a champion rising, a cinder bursting — carries its own
+      // colour, which is what makes the realm's effects read as that realm's.
       const k = clamp(pr.t / 0.42, 0, 1);
       ctx.globalAlpha = k * 0.75;
       const g = ctx.createRadialGradient(pr.x, pr.y, pr.r * 0.15, pr.x, pr.y, pr.r);
-      g.addColorStop(0, 'rgba(190,240,255,0)');
-      g.addColorStop(0.72, 'rgba(150,220,255,0.5)');
-      g.addColorStop(0.94, 'rgba(255,255,255,0.9)');
-      g.addColorStop(1, 'rgba(120,190,255,0)');
+      if (pr.color) {
+        g.addColorStop(0, 'rgba(255,255,255,0)');
+        g.addColorStop(0.72, pr.color + '80');
+        g.addColorStop(0.94, pr.color + 'e6');
+        g.addColorStop(1, 'rgba(0,0,0,0)');
+      } else {
+        g.addColorStop(0, 'rgba(190,240,255,0)');
+        g.addColorStop(0.72, 'rgba(150,220,255,0.5)');
+        g.addColorStop(0.94, 'rgba(255,255,255,0.9)');
+        g.addColorStop(1, 'rgba(120,190,255,0)');
+      }
       ctx.fillStyle = g;
       ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r, 0, TAU); ctx.fill();
       ctx.globalAlpha = 1;
@@ -4305,12 +5134,15 @@
       return;
     }
     if (pr.kind === 'blast') {
+      // Crimson for lava and fire, blue-white for the cold, orange otherwise, so
+      // a burst carries the same signature as the realm it came from.
       const k = clamp(pr.t / 0.22, 0, 1);
       ctx.globalAlpha = k * 0.85;
+      const hot = pr.color === 'cold';
       const g = ctx.createRadialGradient(pr.x, pr.y, 3, pr.x, pr.y, pr.r);
-      g.addColorStop(0, '#fff1c9');
-      g.addColorStop(0.5, '#ff9d5d');
-      g.addColorStop(1, 'rgba(255,90,40,0)');
+      g.addColorStop(0, hot ? '#eaf6ff' : '#fff1c9');
+      g.addColorStop(0.5, hot ? '#7fc0ff' : '#ff9d5d');
+      g.addColorStop(1, hot ? 'rgba(90,150,255,0)' : 'rgba(255,90,40,0)');
       ctx.fillStyle = g;
       ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r, 0, TAU); ctx.fill();
       ctx.globalAlpha = 1;
@@ -4546,6 +5378,8 @@
                     pushOutOfBarriers, ejectFromBarriers, insideBarrier, steerAround,
                     newRoom, roadDistance,
                     swing, hurtEnemy, castSpell, castSpecial,
+                    spawnEnemy, spawnFoe: spawnEnemy, spawnRoomEnemies,
+                    realmOf, realmIndex, REALMS, BOSSES, buildRoom,
                     pressSpell, pressSpecial, readPad, PAD, padEdge,
                     gods: GODS, slots: SLOTS, shopItems: SHOP_ITEMS, offerCount: OFFER_COUNT,
                     rarity: RARITY, rarityOrder: RARITY_ORDER, rollRarity, rollRaritySet,
