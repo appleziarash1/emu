@@ -222,6 +222,82 @@ with sync_playwright() as pw:
     print("page errors:", errors[:5] or "none")
     browser.close()
 
+
+# The same game has to play on a desktop: keyboard movement, a strike, a dash,
+# and no bulky thumb controls over the view.
+with sync_playwright() as pw:
+    browser = pw.chromium.launch()
+    page = browser.new_page(viewport={"width": 1280, "height": 800})
+    errors = []
+    page.on("pageerror", lambda e: errors.append(str(e)))
+    page.goto(URL, wait_until="load")
+    page.click("#playBtn")
+    page.wait_for_timeout(400)
+
+    start = page.evaluate("() => ({ x: window.__game.state.player.x, y: window.__game.state.player.y })")
+    page.keyboard.down("d")
+    page.wait_for_timeout(400)
+    page.keyboard.up("d")
+    moved = page.evaluate("() => window.__game.state.player.x")
+    check("WASD moves the hero on a desktop", moved - start["x"] > 40, round(moved - start["x"]))
+
+    page.keyboard.down("w")
+    page.wait_for_timeout(300)
+    check("WASD moves up as well",
+          page.evaluate("() => window.__game.state.player.y") < start["y"] + 1, True)
+    page.keyboard.up("w")
+
+    # An instant tap, with no hold at all, must still land — this is the case a
+    # skipped hit-stop frame used to swallow. Facing right first, since a strike
+    # only connects with a foe roughly ahead.
+    page.keyboard.down("d")
+    page.wait_for_timeout(120)
+    page.keyboard.up("d")
+    hp = page.evaluate("""() => {
+      const g = window.__game, r = g.room, p = g.state.player;
+      r.enemies.forEach((e) => { e.x = 9999; });
+      const e = r.enemies[0]; e.x = p.x + 25; e.y = p.y;
+      return e.hp;
+    }""")
+    page.keyboard.press("j")
+    page.wait_for_timeout(250)
+    check("an instant J tap still strikes",
+          page.evaluate("() => window.__game.room.enemies[0].hp") < hp, hp)
+
+    page.keyboard.down("d")
+    page.wait_for_timeout(150)
+    page.keyboard.press(" ")
+    page.wait_for_timeout(80)
+    check("an instant Space tap still dashes",
+          page.evaluate("() => window.__game.state.dashT > 0 || window.__game.state.dashCd > 0"), True)
+    page.keyboard.up("d")
+
+    desk = page.evaluate("""() => {
+      const vis = (id) => {
+        const el = document.getElementById(id);
+        return getComputedStyle(el).display !== 'none';
+      };
+      return { kb: document.body.classList.contains('kb'), hint: vis('keyHint'),
+               stick: vis('stick'), hit: vis('btnHit'), dash: vis('btnDash') };
+    }""")
+    check("a desktop shows the key hint", desk["kb"] and desk["hint"], desk)
+    check("the bulky touch buttons stay out of the way on a desktop",
+          not desk["hit"] and not desk["dash"], desk)
+    check("the thumb ring is not shown on a desktop", not desk["stick"], desk)
+
+    # A mouse can still drag the floating stick, so that route is not lost.
+    page.mouse.move(300, 600)
+    page.mouse.down()
+    page.mouse.move(300, 520, steps=5)
+    page.wait_for_timeout(300)
+    check("a mouse drag still drives the stick",
+          page.evaluate("() => Math.hypot(window.__game.state.player.hx, window.__game.state.player.hy)") > 0.1,
+          True)
+    page.mouse.up()
+
+    print("page errors:", errors[:5] or "none")
+    browser.close()
+
 if failures:
     print("\nCONTROL CHECK FAILED:", ", ".join(failures))
     sys.exit(1)

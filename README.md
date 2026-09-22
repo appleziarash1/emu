@@ -61,7 +61,7 @@ state readout.
 - `smoke_test.py` — headless playthrough: clears chambers, takes boons, beats a boss
 - `pwa_test.py` — checks install criteria, offline reload, and the touch joystick
 - `control_test.py` — the floating stick (spawn, dead zone, tracking, release),
-  controller takeover, and the feel of a landed hit
+  controller takeover, the feel of a landed hit, and the desktop keyboard path
 - `feature_test.py` — weapon mechanics, chamber size and walls, the road, the
   minimap, the corridor
 - `update_test.py` — caches a build, ships a new one, asserts the new one arrives
@@ -105,7 +105,10 @@ the running build is always visible.
   does not make you drift.
 - `STRIKE` / `J` / gamepad A swings the arm you carry; it snaps onto a nearby foe.
 - `DASH` / space / gamepad B dashes, and makes you briefly untouchable.
-- `WASD`/arrows or a gamepad's left stick also move you.
-- Connect a controller and the virtual joystick and the on-screen buttons hide
-  themselves; unplug it and they return. The pad replaces the touch controls rather
-  than laying itself over them, so nothing sits in the way of the view.
+- `WASD`/arrows or a gamepad's left stick also move you. On a desktop the mouse can
+  drag the floating stick too.
+- A connected controller replaces the touch controls: they hide while it is in use
+  and return when it is unplugged.
+- On a mouse-and-keyboard machine the resting thumb ring and the two big touch
+  buttons stay out of the way, and a small `WASD move · J strike · Space dash` hint
+  takes their place. Phones still get the full on-screen pad.

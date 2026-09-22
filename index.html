@@ -97,6 +97,17 @@
      aside so the screen is not cluttered by controls nobody is touching. */
   body.pad #stick, body.pad #touchZone, body.pad .tbtn { display: none; }
 
+  /* A mouse-and-keyboard machine has no thumb to hint at, so the resting ring
+     and the big touch buttons give way to a keyboard hint. The ring still shows
+     up while a mouse is dragging, so the stick stays usable either way. */
+  body.kb #stick.idle, body.kb .tbtn { display: none; }
+  #keyHint { position: absolute; z-index: 12; left: 12px;
+             bottom: calc(env(safe-area-inset-bottom) + 34px); display: none;
+             font-size: 12px; font-weight: 700; color: #cbbde6;
+             background: #ffffff14; border: 1px solid #ffffff22; border-radius: 999px;
+             padding: 6px 12px; pointer-events: none; }
+  #hud.on #keyHint.on { display: block; }
+
   .tbtn { position: absolute; z-index: 12; border-radius: 50%; border: 2px solid #ffffff33;
           background: #ffffff1a; color: #fff; font-weight: 800; display: none;
           touch-action: none; align-items: center; justify-content: center;
@@ -162,6 +173,7 @@
       <canvas id="mapCanvas" width="168" height="168"></canvas>
       <div class="mapLabel">gate</div>
     </div>
+    <div id="keyHint">WASD move &middot; J strike &middot; Space dash</div>
   </div>
 
   <div id="touchZone"></div>
@@ -271,6 +283,12 @@
   // ---------------------------------------------------------------- input
   const input = { x: 0, y: 0 };
   const held = { hit: false, dash: false };
+  // A press can land while the sim is frozen for hit stop. Holding it as a
+  // short-lived flag means a tap is never swallowed by a frame that was skipped.
+  const pressBuf = { hit: 0, dash: 0 };
+  const BUFFER = 0.14;
+  function pressHit() { pressBuf.hit = BUFFER; }
+  function pressDash() { pressBuf.dash = BUFFER; }
 
   // Floating joystick. The stick has no fixed home: it appears under the thumb
   // wherever the left half of the screen is touched, so there is nothing to
@@ -368,7 +386,11 @@
 
   function bindButton(id, key) {
     const el = document.getElementById(id);
-    const down = (e) => { e.preventDefault(); held[key] = true; el.classList.add('press'); };
+    const down = (e) => {
+      e.preventDefault();
+      if (!held[key]) (key === 'hit' ? pressHit : pressDash)();
+      held[key] = true; el.classList.add('press');
+    };
     const up = (e) => { e.preventDefault(); held[key] = false; el.classList.remove('press'); };
     el.addEventListener('touchstart', down, { passive: false });
     el.addEventListener('touchend', up);
@@ -382,8 +404,10 @@
 
   const keys = {};
   window.addEventListener('keydown', (e) => {
-    keys[e.key.toLowerCase()] = true;
-    if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(e.key.toLowerCase())) e.preventDefault();
+    const k = e.key.toLowerCase();
+    if (!keys[k]) { if (k === 'j') pressHit(); if (k === ' ' || k === 'k') pressDash(); }
+    keys[k] = true;
+    if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
   });
   window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
 
@@ -398,6 +422,11 @@
   }
   let padHit = false, padDash = false;
   let padActive = false;
+  const padPrev = { hit: false, dash: false };
+  const padEdge = { hit: false, dash: false };
+  // A phone has no keyboard, so the touch buttons stay; a desktop does, and gets
+  // a key hint instead of two large circles over the play area.
+  const hasKeyboard = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 
   // On-screen controls and a physical controller are alternatives, not layers:
   // once a pad is steering the hero the stick and buttons are hidden, and they
@@ -424,12 +453,14 @@
       let x = p.axes[0] || 0, y = p.axes[1] || 0;
       if (Math.abs(x) < 0.18) x = 0;
       if (Math.abs(y) < 0.18) y = 0;
-      return {
-        x, y,
-        hit: !!(p.buttons[0] && p.buttons[0].pressed) || !!(p.buttons[7] && p.buttons[7].pressed),
-        dash: !!(p.buttons[1] && p.buttons[1].pressed) || !!(p.buttons[5] && p.buttons[5].pressed) ||
-              !!(p.buttons[6] && p.buttons[6].pressed),
-      };
+      const hitDown = !!(p.buttons[0] && p.buttons[0].pressed) || !!(p.buttons[7] && p.buttons[7].pressed);
+      const dashDown = !!(p.buttons[1] && p.buttons[1].pressed) || !!(p.buttons[5] && p.buttons[5].pressed) ||
+                       !!(p.buttons[6] && p.buttons[6].pressed);
+      // Rising edges are buffered so a pad tap is not lost to a skipped frame.
+      if (hitDown && !padPrev.hit) padEdge.hit = true;
+      if (dashDown && !padPrev.dash) padEdge.dash = true;
+      padPrev.hit = hitDown; padPrev.dash = dashDown;
+      return { x, y, hit: hitDown, dash: dashDown };
     }
     return null;
   }
@@ -1082,6 +1113,9 @@
 
     const pad = readPad();
     const kb = readKeys();
+    // readPad also records rising edges so a pad press is buffered like any other
+    const padHitNow = padEdge.hit, padDashNow = padEdge.dash;
+    padEdge.hit = false; padEdge.dash = false;
     let mx = input.x + kb.x + (pad ? pad.x : 0);
     let my = input.y + kb.y + (pad ? pad.y : 0);
     const ml = Math.hypot(mx, my);
@@ -1110,14 +1144,20 @@
     state.dashCd = Math.max(0, state.dashCd - dt);
     state.dashT = Math.max(0, state.dashT - dt);
 
-    const wantDash = held.dash || kb.dash || (pad && pad.dash);
+    // A buffered press survives the frames that hit stop skips, so a tap always
+    // counts even when it lands on an impact.
+    pressBuf.hit = Math.max(0, pressBuf.hit - dt);
+    pressBuf.dash = Math.max(0, pressBuf.dash - dt);
+
+    const wantDash = held.dash || kb.dash || pressBuf.dash > 0 || padDashNow;
     if (wantDash && state.dashCd <= 0 && (ml > 0.05 || p.faceY)) {
+      pressBuf.dash = 0;
       state.dashT = 0.16; state.dashCd = state.dashCdMax; state.inv = Math.max(state.inv, 0.22);
       const dx = ml > 0.05 ? mx / ml : p.faceX, dy = ml > 0.05 ? my / ml : p.faceY;
       p.kx = dx * state.dashPow; p.ky = dy * state.dashPow;
     }
-    const wantHit = held.hit || kb.hit || (pad && pad.hit);
-    if (wantHit) swing();
+    const wantHit = held.hit || kb.hit || pressBuf.hit > 0 || padHitNow;
+    if (wantHit) { pressBuf.hit = 0; swing(); }
 
     // enemies
     for (const e of room.enemies) {
@@ -2634,13 +2674,22 @@
     placeStick(home.x, home.y, true);
     stick.classList.add('on');
     touchZone.classList.add('on');
-    // Mouse users have no left-half gesture habit; the ring is the fallback.
-    document.getElementById('btnHit').classList.add('on');
-    document.getElementById('btnDash').classList.add('on');
+    // A mouse can still drag the stick, but there is no thumb to point at and
+    // the big buttons would only cover the view, so the keyboard hint takes
+    // their place on a machine that has a keyboard.
+    if (hasKeyboard) {
+      document.body.classList.add('kb');
+      document.getElementById('keyHint').classList.add('on');
+    } else {
+      document.getElementById('btnHit').classList.add('on');
+      document.getElementById('btnDash').classList.add('on');
+    }
   }
   function hideTouch() {
     stick.classList.remove('on');
     touchZone.classList.remove('on');
+    document.body.classList.remove('kb');
+    document.getElementById('keyHint').classList.remove('on');
     document.getElementById('btnHit').classList.remove('on');
     document.getElementById('btnDash').classList.remove('on');
   }
@@ -2670,7 +2719,7 @@
   try {
     const best = localStorage.getItem('ue_best');
     if (best) document.getElementById('bestLine').textContent = 'Best depth so far: ' + best;
-    document.getElementById('buildLine').textContent = 'art build 5';
+    document.getElementById('buildLine').textContent = 'art build 6';
   } catch (e) {}
 
   // Debug snapshot for automated checks (see ?debug=1).
