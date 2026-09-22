@@ -112,6 +112,11 @@
     padding: 6px 11px; border-radius: 999px; border: 0; color: #f3ecff;
     background: #ffffff1c; backdrop-filter: blur(6px); }
   #saveBtn:active { transform: translateY(1px); background: #ffffff2e; }
+  #pauseBtn { position: absolute; right: 12px; top: calc(env(safe-area-inset-top) + 92px);
+    pointer-events: auto; font: 700 11px system-ui, sans-serif; letter-spacing: .06em;
+    padding: 6px 11px; border-radius: 999px; border: 0; color: #f3ecff;
+    background: #ffffff1c; backdrop-filter: blur(6px); }
+  #pauseBtn:active { transform: translateY(1px); background: #ffffff2e; }
 
   .tbtn { position: absolute; z-index: 12; border-radius: 50%; border: 2px solid #ffffff33;
           background: #ffffff1a; color: #fff; font-weight: 800; display: none;
@@ -142,6 +147,41 @@
   .card b { display: block; font-size: 16px; color: #ffe9a8; }
   .card span { display: block; font-size: 13px; color: #b9a7d6; margin-top: 3px; line-height: 1.45; }
   .card em { font-style: normal; font-size: 11px; color: #8f7fb5; }
+
+  #slots { position: absolute; inset: 0; z-index: 23; display: grid; place-content: center; gap: 10px;
+           padding: 20px; background: #07030ef2; text-align: center; overflow-y: auto; }
+  #slots[hidden] { display: none; }
+  #slots h2 { margin: 0; font-size: 19px; color: #ffd88a; }
+  .slotSub { margin: 0 0 4px; font-size: 13px; color: #b9a7d6; }
+  #slotsBody { display: grid; gap: 10px; }
+  .slot { width: min(460px, 88vw); padding: 12px 14px; border-radius: 16px; cursor: pointer;
+          border: 1px solid #ffffff2b; background: #ffffff0f; text-align: left; color: #f3ecff; position: relative; }
+  .slot:active { background: #ffffff1f; }
+  .slot b { display: block; font-size: 15px; color: #ffe9a8; }
+  .slot span { display: block; font-size: 12.5px; color: #b9a7d6; margin-top: 3px; line-height: 1.45; }
+  .slot em { font-style: normal; display: block; font-size: 11px; letter-spacing: .08em;
+             text-transform: uppercase; color: #8f7fb5; }
+  .slot .found { color: #7ce0a0; }
+  .slot.rec { border-color: #ffd47999; background: #ffd4791a; }
+  .slot .tag { position: absolute; right: 12px; top: 10px; font-size: 10px; font-weight: 800;
+               letter-spacing: .06em; color: #2a1740; background: #ffd479; border-radius: 999px;
+               padding: 3px 8px; }
+  .slot.eq { border-color: #7fd4ff66; }
+  .slot .eqtag { position: absolute; right: 12px; top: 10px; font-size: 10px; font-weight: 800;
+                 color: #dff3ff; background: #3c6f8c; border-radius: 999px; padding: 3px 8px; }
+
+  #shopBody { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+              gap: 10px; width: min(560px, 90vw); max-height: 52vh; overflow-y: auto; margin: 4px 0; }
+  .shopItem { padding: 10px 12px; border-radius: 14px; cursor: pointer; text-align: left;
+              border: 1px solid #ffffff2b; background: #ffffff0f; color: #f3ecff; }
+  .shopItem b { display: block; font-size: 14px; color: #ffe9a8; }
+  .shopItem span { display: block; font-size: 11.5px; color: #b9a7d6; margin-top: 2px; }
+  .shopItem .price { display: inline-block; margin-top: 6px; font-size: 11px; font-weight: 800;
+                     letter-spacing: .05em; color: #2a1740; background: #ffd479; border-radius: 999px;
+                     padding: 3px 9px; }
+  .shopItem.poor { opacity: .5; }
+  .shopItem.poor .price { background: #6b5f80; color: #ded4ef; }
+  #pausePowers { font-size: 13px; }
   .arm { padding: 8px 11px; border-radius: 12px; border: 1px solid #ffffff2b; cursor: pointer;
          background: #ffffff0f; color: #f3ecff; font-size: 12px; font-weight: 700;
          display: flex; align-items: center; gap: 6px; }
@@ -186,6 +226,7 @@
     </div>
     <div id="keyHint">WASD move &middot; J strike &middot; U spell &middot; I special &middot; Space dash</div>
     <button id="saveBtn" type="button">SAVE</button>
+    <button id="pauseBtn" type="button" aria-label="Pause">❚❚</button>
   </div>
 
   <div id="touchZone"></div>
@@ -201,6 +242,36 @@
   <div id="cards" hidden>
     <h2 id="cardsTitle">Choose a Boon</h2>
     <div id="cardsBody"></div>
+  </div>
+
+  <div id="slots" hidden>
+    <h2 id="slotsTitle">Where will it strike?</h2>
+    <p class="slotSub" id="slotsSub"></p>
+    <div id="slotsBody"></div>
+  </div>
+
+  <div class="overlay" id="pause" hidden>
+    <h1 style="font-size:28px">Paused</h1>
+    <p class="sub" id="pausePowers"></p>
+    <div class="row">
+      <button class="btn" id="pauseResume" type="button">Resume</button>
+    </div>
+    <div class="row">
+      <button class="btn ghost" id="pauseShop" type="button">Gods' Market</button>
+    </div>
+    <div class="row">
+      <button class="btn ghost" id="pauseSave" type="button">Save and quit</button>
+    </div>
+    <p class="sub" style="font-size:12px; opacity:.7">Progress is saved automatically — you
+      can close the app and pick the run back up from the menu.</p>
+  </div>
+
+  <div class="overlay" id="shop" hidden>
+    <h1 style="font-size:28px">Gods' Market</h1>
+    <p class="sub">Spend obols on a god's favour. You choose which move it empowers.</p>
+    <p class="sub" id="shopObols" style="font-size:13px">You carry <b>0</b> obols.</p>
+    <div id="shopBody"></div>
+    <div class="row"><button class="btn ghost" id="shopBack" type="button">Back</button></div>
   </div>
 
   <div class="overlay" id="menu">
@@ -532,31 +603,195 @@
   }
 
   // -------------------------------------------------------------- content
-  const BOONS = [
-    { id: 'zeus', god: 'Zeus', name: 'Static Shock', desc: 'Strikes release chain lightning for +60% reach.',
-      apply: (s) => { s.reach *= 1.6; s.arc = true; } },
-    { id: 'athena', god: 'Athena', name: 'Bronze Bulwark', desc: 'Gain a shield that blocks one hit, restored each chamber.',
-      apply: (s) => { s.shieldMax += 1; s.shield = s.shieldMax; } },
-    { id: 'poseidon', god: 'Poseidon', name: 'Tidal Force', desc: 'Your strikes knock foes back hard.',
-      apply: (s) => { s.knock += 180; } },
-    { id: 'ares', god: 'Ares', name: 'Bloodlust', desc: 'Deal +35% damage.',
-      apply: (s) => { s.dmg *= 1.35; } },
-    { id: 'artemis', god: 'Artemis', name: "Hunter's Mark", desc: 'Move 25% faster and dash farther.',
-      apply: (s) => { s.speed *= 1.25; s.dashPow *= 1.25; } },
-    { id: 'aphrodite', god: 'Aphrodite', name: 'Healing Grace', desc: 'Recover 40 health and raise max health by 20.',
-      apply: (s) => { s.maxHp += 20; s.hp = Math.min(s.maxHp, s.hp + 40); } },
-    { id: 'demeter', god: 'Demeter', name: 'Frostbite', desc: 'Struck foes are slowed while they burn.',
-      apply: (s) => { s.slow = true; } },
-    { id: 'hermes', god: 'Hermes', name: 'Quick Feet', desc: 'Dashes recharge twice as fast.',
-      apply: (s) => { s.dashCdMax *= 0.5; } },
-    { id: 'dionysus', god: 'Dionysus', name: 'Hangover', desc: 'Defeated foes leave a damaging mist.',
-      apply: (s) => { s.mist = true; } },
-    { id: 'chaos', god: 'Chaos', name: 'Cursed Gift', desc: 'Double damage, but you carry 20 less max health.',
-      apply: (s) => { s.dmg *= 2; s.maxHp = Math.max(40, s.maxHp - 20); s.hp = Math.min(s.hp, s.maxHp); } },
-    { id: 'hephaestus', god: 'Hephaestus', name: 'Forge Blast', desc: 'Each strike has a chance to explode for heavy area damage.',
-      apply: (s) => { s.blast = true; } },
+  // ------------------------------------------------------------- god powers
+  // Every god grants one power per slot. Attack and Special and Spell each get
+  // their own version, so the same god plays differently depending on where the
+  // power is bound — the way a Hades boon lands on a different move.
+  //
+  // Each slot carries:
+  //   name/desc  what the card says
+  //   rec        true on the slot the game suggests, so the chooser can point
+  //   apply(s)   a permanent stat change, applied once when bound
+  //   flags      a per-slot effect marker read by the combat code
+  //
+  // The effect markers live in state.se[slot].<flag> rather than one shared
+  // state field, so binding Zeus to Special cannot accidentally turn on an
+  // Attack effect.
+  const SLOTS = [
+    { id: 'attack',  label: 'Attack',  blurb: 'your STRIKE',  key: 'strike' },
+    { id: 'special', label: 'Special', blurb: 'your SPECIAL', key: 'special' },
+    { id: 'spell',   label: 'Spell',   blurb: 'your SPELL',   key: 'spell' },
   ];
 
+  const GODS = [
+    {
+      id: 'zeus', god: 'Zeus', theme: 'chain lightning',
+      variants: {
+        attack: { name: 'Thunder Strike', rec: true,
+          desc: 'A struck foe arcs lightning to those beside it, and your reach grows.',
+          apply: (s) => { s.reach *= 1.25; }, flags: { chain: true } },
+        special: { name: 'Storm Blade', rec: true,
+          desc: 'Foes the blade cuts arc lightning to those beside them.',
+          apply: (s) => { s.reach *= 1.1; }, flags: { specChain: true, trail: 'spark' } },
+        spell: { name: 'Thunder Nova', rec: true,
+          desc: 'The burst arcs lightning outward, chaining to every nearby foe.',
+          apply: (s) => { s.splCdMax *= 0.9; }, flags: { novaChain: true } },
+      },
+    },
+    {
+      id: 'athena', god: 'Athena', theme: 'aegis and reflection',
+      variants: {
+        attack: { name: 'Shield Bash', rec: false,
+          desc: 'Your strikes knock foes back hard and raise a shield each chamber.',
+          apply: (s) => { s.knock += 150; s.shieldMax += 1; s.shield = s.shieldMax; },
+          flags: {} },
+        special: { name: 'Aegis Throw', rec: true,
+          desc: 'The blade shields you as it flies, and its return restores the aegis.',
+          apply: (s) => { s.shieldMax += 1; s.shield = s.shieldMax; }, flags: { specShield: true } },
+        spell: { name: 'Bulwark', rec: true,
+          desc: 'The burst leaves a longer shield and reflects every shot it catches.',
+          apply: (s) => { s.shieldMax += 1; s.shield = s.shieldMax; },
+          flags: { novaShield: true, reflect: true } },
+      },
+    },
+    {
+      id: 'poseidon', god: 'Poseidon', theme: 'tidal force',
+      variants: {
+        attack: { name: 'Tidal Sweep', rec: true,
+          desc: 'Your strikes send foes sliding away in a surge of water.',
+          apply: (s) => { s.knock += 220; }, flags: { wave: true } },
+        special: { name: 'Riptide', rec: true,
+          desc: 'The blade drags foes back toward you on its return.',
+          apply: (s) => { s.knock += 80; }, flags: { drag: true } },
+        spell: { name: 'Maelstrom', rec: true,
+          desc: 'The burst pulls everything nearby into its centre and hurls it out.',
+          apply: (s) => { s.knock += 120; }, flags: { novaPull: true } },
+      },
+    },
+    {
+      id: 'ares', god: 'Ares', theme: 'raw bloodshed',
+      variants: {
+        attack: { name: 'Blade Rush', rec: true,
+          desc: 'Your strikes hit for a third more damage.',
+          apply: (s) => { s.dmg *= 1.33; }, flags: {} },
+        special: { name: 'Whirling Doom', rec: true,
+          desc: 'The blade hits far harder and cuts deeper on the way home.',
+          apply: (s) => { s.dmg *= 1.2; }, flags: { specHeavy: true } },
+        spell: { name: 'Blood Nova', rec: true,
+          desc: 'The burst wounds you a little and hits everything much harder.',
+          apply: (s) => { s.dmg *= 1.15; }, flags: { novaBlood: true } },
+      },
+    },
+    {
+      id: 'artemis', god: 'Artemis', theme: 'hunt and crit',
+      variants: {
+        attack: { name: "Hunter's Aim", rec: true,
+          desc: 'Your strikes crit for double damage on a good roll.',
+          apply: (s) => { s.speed *= 1.1; }, flags: { crit: 0.28 } },
+        special: { name: 'Deadly Throw', rec: true,
+          desc: 'The blade crits and travels faster and farther.',
+          apply: (s) => { s.speed *= 1.1; }, flags: { specCrit: 0.35 } },
+        spell: { name: 'Moonlight', rec: false,
+          desc: 'The burst crits on everything it touches.',
+          apply: (s) => { s.speed *= 1.08; }, flags: { novaCrit: 0.3 } },
+      },
+    },
+    {
+      id: 'aphrodite', god: 'Aphrodite', theme: 'charm and healing',
+      variants: {
+        attack: { name: 'Sweet Pain', rec: false,
+          desc: 'Foes you strike are charmed and weakened, hitting for less.',
+          apply: (s) => { s.maxHp += 20; s.hp = Math.min(s.maxHp, s.hp + 30); },
+          flags: { weaken: true } },
+        special: { name: 'Heartseeker', rec: true,
+          desc: 'The blade charms every foe it cuts and heals you as it returns.',
+          apply: (s) => { s.maxHp += 20; }, flags: { specCharm: true } },
+        spell: { name: 'Empathy', rec: true,
+          desc: 'The burst charms attackers and mends a chunk of your wounds.',
+          apply: (s) => { s.maxHp += 20; s.hp = Math.min(s.maxHp, s.hp + 40); },
+          flags: { novaHeal: 24, novaCharm: true } },
+      },
+    },
+    {
+      id: 'demeter', god: 'Demeter', theme: 'frost',
+      variants: {
+        attack: { name: 'Frostbite', rec: true,
+          desc: 'Struck foes are chilled, moving and striking far slower.',
+          apply: (s) => { s.dmg *= 1.05; }, flags: { frost: 1.8 } },
+        special: { name: 'Glacial Edge', rec: true,
+          desc: 'The blade leaves a lasting chill on everything it cuts.',
+          apply: (s) => { s.dmg *= 1.05; }, flags: { specFrost: true } },
+        spell: { name: 'Winter Burst', rec: true,
+          desc: 'The burst freezes nearby foes in place for a moment.',
+          apply: (s) => { s.splCdMax *= 0.85; }, flags: { novaFreeze: 1.2 } },
+      },
+    },
+    {
+      id: 'hermes', god: 'Hermes', theme: 'speed',
+      variants: {
+        attack: { name: 'Fleet Blade', rec: false,
+          desc: 'Your strikes come faster, so you can chain them.',
+          apply: (s) => { s.speed *= 1.15; s.weapon.cooldown *= 0.8; }, flags: {} },
+        special: { name: 'Quick Return', rec: true,
+          desc: 'The blade comes back sooner and flies out again almost at once.',
+          apply: (s) => { s.speed *= 1.1; s.specCdMax *= 0.75; }, flags: { specFast: true } },
+        spell: { name: 'Winged Step', rec: true,
+          desc: 'The burst recharges much faster and briefly speeds you up.',
+          apply: (s) => { s.splCdMax *= 0.7; }, flags: { novaHaste: true } },
+      },
+    },
+    {
+      id: 'dionysus', god: 'Dionysus', theme: 'hangover and poison',
+      variants: {
+        attack: { name: 'Drunken Fist', rec: false,
+          desc: 'Fallen foes leave a lingering damaging mist where they drop.',
+          apply: (s) => { s.maxHp += 15; }, flags: { fume: true } },
+        special: { name: 'Wine Throw', rec: true,
+          desc: 'The blade leaves pools of poison mist along the path it cuts.',
+          apply: (s) => { s.maxHp += 15; }, flags: { specMist: true } },
+        spell: { name: 'Hangover Nova', rec: true,
+          desc: 'The burst leaves a ring of poison mist around you.',
+          apply: (s) => { s.maxHp += 15; }, flags: { novaMist: true } },
+      },
+    },
+    {
+      id: 'hephaestus', god: 'Hephaestus', theme: 'forge and fire',
+      variants: {
+        attack: { name: 'Forge Blast', rec: true,
+          desc: 'Each strike has a chance to explode for heavy area damage.',
+          apply: (s) => { s.dmg *= 1.1; }, flags: { blast: 0.35 } },
+        special: { name: 'Molten Blade', rec: false,
+          desc: 'The blade burns foes, leaving them damaged over time.',
+          apply: (s) => { s.dmg *= 1.1; }, flags: { specBurn: true } },
+        spell: { name: 'Volcanic Burst', rec: true,
+          desc: 'The burst leaves burning ground that scorches anyone standing on it.',
+          apply: (s) => { s.dmg *= 1.08; }, flags: { novaFire: true } },
+      },
+    },
+    {
+      id: 'chaos', god: 'Chaos', theme: 'power at a price',
+      variants: {
+        attack: { name: 'Cursed Edge', rec: false,
+          desc: 'Your strikes hit twice as hard, but you carry 20 less max health.',
+          apply: (s) => { s.dmg *= 2; s.maxHp = Math.max(40, s.maxHp - 20); s.hp = Math.min(s.hp, s.maxHp); },
+          flags: {} },
+        special: { name: 'Cursed Throw', rec: false,
+          desc: 'The blade hits twice as hard, but you carry 20 less max health.',
+          apply: (s) => { s.dmg *= 1.8; s.maxHp = Math.max(40, s.maxHp - 20); s.hp = Math.min(s.hp, s.maxHp); },
+          flags: {} },
+        spell: { name: 'Chaos Nova', rec: true,
+          desc: 'The burst hits twice as hard and recharges fast, at a health cost.',
+          apply: (s) => { s.dmg *= 1.6; s.splCdMax *= 0.7; s.maxHp = Math.max(40, s.maxHp - 20); s.hp = Math.min(s.hp, s.maxHp); },
+          flags: {} },
+      },
+    },
+  ];
+
+  // The shop's shelf: the same gods, priced by how much they bend a run.
+  const SHOP_ITEMS = GODS.map((g) => ({
+    id: g.id, god: g.god, theme: g.theme,
+    price: g.id === 'chaos' ? 160 : g.id === 'ares' || g.id === 'zeus' ? 130 : 110,
+  }));
   // ---------------------------------------------------------------- weapons
   // Five arms, each with its own reach, cadence and drawing so a run feels
   // different depending on what is carried. Multipliers are applied to the
@@ -592,9 +827,13 @@
       hp: 100, maxHp: 100, dmg: 18, speed: 205, reach: 62, knock: 0,
       arc: false, slow: false, mist: false, blast: false,
       shield: 0, shieldMax: 0,
-      dashPow: 640, dashCd: 0, dashCdMax: 0.9, dashT: 0, inv: 0,
+      dashPow: 640, dashCd: 0, dashCdMax: 0.9, dashT: 0, inv: 0, haste: 0,
       splCd: 0, splCdMax: 8, specCd: 0, specCdMax: 6,
       swingT: 0, swingCd: 0, weapon,
+      // One power per slot. se[slot] holds that slot's effect flags, so a Zeus
+      // bound to Spell cannot switch on an Attack effect.
+      slots: { attack: null, special: null, spell: null },
+      se: { attack: {}, special: {}, spell: {} },
       xp: 0, level: 1, obols: 0,
       depth: 1, kills: 0, boons: [], takenIds: {}, offer: null, tAcc: 0,
     };
@@ -690,7 +929,7 @@
   // foes into it.
   function buildRoom(w, h, door, entry, seed) {
     seedRng(seed);
-    room = { w, h, enemies: [], projectiles: [], t: 0, mist: [], floaters: [],
+    room = { w, h, enemies: [], projectiles: [], t: 0, mist: [], fire: [], floaters: [],
              cleared: false, isBoss: state.depth % 5 === 0, seed, door, entry };
     state.player = { x: w / 2, y: h / 2, hx: 0, hy: 0, r: 15, kx: 0, ky: 0 };
 
@@ -854,7 +1093,15 @@
 
     p.faceX = lx; p.faceY = ly;
 
-    if (w.kind === 'ranged') { fireShot(lx, ly); return; }
+    if (w.kind === 'ranged') {
+      // A ranged arm carries its own crit, so Artemis on Strike reaches the bow
+      // as well as the blade.
+      const c = (state.se.attack || {}).crit;
+      let shotCrit = false;
+      if (c && Math.random() < c) shotCrit = true;
+      fireShot(lx, ly, shotCrit);
+      return;
+    }
 
     for (const e of room.enemies) {
       const dx = e.x - p.x, dy = e.y - p.y;
@@ -862,45 +1109,106 @@
       if (d > range + e.r) continue;
       const dot = (dx * lx + dy * ly) / (d || 1);
       if (dot < 0.15) continue;   // must be roughly in front
-      const dmg = state.dmg * w.dmgMul;
-      hurtEnemy(e, dmg, { x: lx, y: ly });
-      if (state.arc) {
-        for (const o of room.enemies) {
-          if (o === e) continue;
-          if (dist(o, e) < 130) hurtEnemy(o, dmg * 0.5, { x: lx, y: ly });
-        }
-        room.projectiles.push({ x: e.x, y: e.y, t: 0.16, kind: 'spark' });
-      }
-      if (state.blast && Math.random() < 0.3) {
-        for (const o of room.enemies) if (dist(o, e) < 90) hurtEnemy(o, dmg * 0.8, null);
-        room.projectiles.push({ x: e.x, y: e.y, t: 0.22, kind: 'blast', r: 90 });
-      }
+      let dmg = state.dmg * w.dmgMul;
+      // Per-slot effects read from se.attack only, so where a power was bound is
+      // what decides the effect.
+      const ate = state.se.attack || {};
+      let crit = false;
+      if (ate.crit && Math.random() < ate.crit) { dmg *= 2; crit = true; }
+      hurtEnemy(e, dmg, { x: lx, y: ly }, crit);
+      applyStrikeEffects(e, dmg, lx, ly);
     }
   }
 
-  // ------------------------------------------------------------------ spells
+  // ------------------------------------------------------------ slot effects
+  // These are the "where did I put that god" consequences. Each reads only its
+  // own slot's flags, so the same god can be bound anywhere without the effects
+  // bleeding between moves.
+  function applyStrikeEffects(e, dmg, lx, ly) {
+    const se = state.se.attack || {};
+    if (se.chain) {
+      for (const o of room.enemies) {
+        if (o === e || o.dead) continue;
+        if (dist(o, e) < 140) hurtEnemy(o, dmg * 0.6, { x: lx, y: ly });
+      }
+      room.projectiles.push({ x: e.x, y: e.y, t: 0.18, kind: 'spark' });
+    }
+    if (se.wave) room.projectiles.push({ x: e.x, y: e.y, t: 0.4, kind: 'wave', r: 70 });
+    if (se.frost) e.slowed = Math.max(e.slowed || 0, se.frost);
+    if (se.weaken) { e.weaken = 6; e.weakenT = 0.5; }
+    if (se.fume) room.mist.push({ x: e.x, y: e.y, r: 44, t: 3.5 });
+    if (se.blast && Math.random() < se.blast) {
+      for (const o of room.enemies) if (o !== e && dist(o, e) < 95) hurtEnemy(o, dmg * 0.8, null);
+      room.projectiles.push({ x: e.x, y: e.y, t: 0.22, kind: 'blast', r: 95 });
+    }
+  }
+
   // The spell is a slow, wide, self-centred burst: the panic button. Its cooldown
   // is long, so it is a decision rather than a rhythm.
   function castSpell() {
     if (state.splCd > 0) return false;
     const p = state.player;
     state.splCd = state.splCdMax;
-    const R = 170;
+    const se = state.se.spell || {};
+    const R = se.novaShield ? 200 : 170;
     room.projectiles.push({ x: p.x, y: p.y, t: 0.42, kind: 'nova', r: R });
     for (const e of room.enemies) {
       if (e.dead) continue;
       const d = dist(e, p);
       if (d > R + e.r) continue;
-      hurtEnemy(e, state.dmg * 2.1, { x: (e.x - p.x) / (d || 1), y: (e.y - p.y) / (d || 1) });
+      let dmg = state.dmg * 2.1;
+      if (se.novaCrit && Math.random() < se.novaCrit) dmg *= 2;
+      if (se.novaChain) dmg *= 1.15;
+      hurtEnemy(e, dmg, { x: (e.x - p.x) / (d || 1), y: (e.y - p.y) / (d || 1) });
       e.slowed = Math.max(e.slowed || 0, state.slow ? 1.6 : 0.6);
+      if (se.novaFreeze) e.slowed = Math.max(e.slowed || 0, 3);
+      if (se.novaChain) {
+        for (const o of room.enemies) {
+          if (o === e || o.dead) continue;
+          if (dist(o, e) < 130) hurtEnemy(o, dmg * 0.5, null);
+        }
+      }
+      if (se.novaCharm) e.weaken = 6;
     }
+    if (se.novaPull) {
+      // Maelstrom: drag everything to the centre, then let the knockback throw it
+      // back out. The pull is what makes the burst read as water rather than fire.
+      for (const e of room.enemies) {
+        if (e.dead) continue;
+        const dx = p.x - e.x, dy = p.y - e.y;
+        const d = Math.hypot(dx, dy) || 1;
+        e.kx = (dx / d) * 260; e.ky = (dy / d) * 260;
+      }
+    }
+    if (se.novaHeal) {
+      const h = typeof se.novaHeal === 'number' ? se.novaHeal : 20;
+      state.hp = Math.min(state.maxHp, state.hp + h);
+      floater(p.x, p.y - 24, '+' + h, true);
+    }
+    if (se.novaBlood) damagePlayer(8);
+    if (se.novaMist) {
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * TAU;
+        room.mist.push({ x: p.x + Math.cos(a) * 70, y: p.y + Math.sin(a) * 70, r: 52, t: 4 });
+      }
+    }
+    if (se.novaFire) room.fire = room.fire || [], room.fire.push({ x: p.x, y: p.y, r: R, t: 3 });
+    if (se.novaHaste) state.haste = 3;
     for (const pr of room.projectiles) {
       if (pr.hostile && pr.kind !== 'blast' && pr.kind !== 'spark' && pr.kind !== 'impact' &&
-          Math.hypot(pr.x - p.x, pr.y - p.y) < R) pr.t = 0;
+          Math.hypot(pr.x - p.x, pr.y - p.y) < R) {
+        pr.t = 0;
+        if (se.reflect) {
+          // Reflect turns the burst into a parry: the shot comes back at whoever
+          // fired it rather than simply vanishing.
+          room.projectiles.push({ x: pr.x, y: pr.y, vx: -pr.vx, vy: -pr.vy,
+            r: pr.r, dmg: pr.dmg * 2, t: 2, kind: pr.kind, hostile: false, mirrored: true });
+        }
+      }
     }
     // The burst briefly shields the caster, which is what makes it a way out of
     // a corner rather than just an attack.
-    state.inv = Math.max(state.inv, 0.5);
+    state.inv = Math.max(state.inv, se.novaShield ? 0.9 : 0.5);
     toast('Spell — the room repels');
     return true;
   }
@@ -918,20 +1226,24 @@
     if (!isFinite(lx) || !isFinite(ly) || (lx === 0 && ly === 0)) { lx = 0; ly = 1; }
     const m = Math.hypot(lx, ly) || 1;
     lx /= m; ly /= m;
-    const speed = 520;
+    const sse = state.se.special || {};
+    const speed = sse.specFast ? 650 : 520;
+    const life = sse.specCrit ? 1.8 : 1.5;
     room.projectiles.push({
       x: p.x + lx * 18, y: p.y + ly * 18,
       vx: lx * speed, vy: ly * speed,
-      r: 15, dmg: state.dmg * 1.5, t: 1.5, kind: 'chakram', hostile: false,
-      spin: 0, returning: false, hitSet: [],
+      r: 15, dmg: state.dmg * (sse.specHeavy ? 2.2 : 1.5), t: life,
+      kind: 'chakram', hostile: false,
+      spin: 0, returning: false, hitSet: [], trail: 0,
     });
+    if (sse.specShield) { state.shield = Math.min(state.shieldMax, state.shield + 1); state.inv = Math.max(state.inv, 0.6); }
     state.swingT = 0.2;
     return true;
   }
 
   // Ranged weapons share one projectile shape; the weapon decides damage, speed
   // and how many shots leave the string at once.
-  function fireShot(lx, ly) {
+  function fireShot(lx, ly, crit) {
     const p = state.player, w = state.weapon;
     const spread = w.shots > 1 ? 0.09 : 0;
     for (let i = 0; i < w.shots; i++) {
@@ -940,7 +1252,7 @@
         x: p.x + Math.cos(a) * 16, y: p.y + Math.sin(a) * 16,
         vx: Math.cos(a) * w.shotSpeed, vy: Math.sin(a) * w.shotSpeed,
         r: w.shotR, dmg: state.dmg * w.dmgMul, t: w.shotLife,
-        kind: 'arrow', hostile: false, a,
+        kind: 'arrow', hostile: false, a, crit: !!crit,
       });
     }
     if (state.arc) {
@@ -948,11 +1260,11 @@
     }
   }
 
-  function hurtEnemy(e, amount, push) {
+  function hurtEnemy(e, amount, push, crit) {
     e.hp -= amount;
     e.burn = 0.12;
     e.hurt = 0.12;
-    floater(e.x + rand(-6, 6), e.y - e.r, String(Math.round(amount)), false);
+    floater(e.x + rand(-6, 6), e.y - e.r, (crit ? '✦' : '') + Math.round(amount), crit);
     if (state.slow) e.slowed = 1.6;
     const pushPow = (state.knock || 0) + (state.weapon.knock || 0);
     if (push && pushPow) {
@@ -1002,6 +1314,7 @@
     state.xp += e.kind === 'boss' ? 60 : e.kind === 'brute' ? 8 : e.kind === 'wraith' ? 5 : 4;
     state.obols += e.kind === 'boss' ? 120 : e.kind === 'brute' ? 12 : 6;
     if (state.mist) room.mist.push({ x: e.x, y: e.y, r: 46, t: 4.5 });
+    if ((state.se.attack || {}).fume) room.mist.push({ x: e.x, y: e.y, r: 44, t: 3.5 });
     levelUp();
   }
 
@@ -1240,7 +1553,8 @@
     if (ml > 0.05) { p.faceX = mx / (ml || 1); p.faceY = my / (ml || 1); }
 
     const dashing = state.dashT > 0;
-    const spd = state.speed * (dashing ? 2.6 : 1);
+    state.haste = Math.max(0, (state.haste || 0) - dt);
+    const spd = state.speed * (dashing ? 2.6 : 1) * (state.haste > 0 ? 1.3 : 1);
     p.x += mx * spd * dt;
     p.y += my * spd * dt;
 
@@ -1288,6 +1602,14 @@
       if (e.dead) continue;
       e.burn = Math.max(0, (e.burn || 0) - dt);
       e.slowed = Math.max(0, (e.slowed || 0) - dt);
+      e.weaken = Math.max(0, (e.weaken || 0) - dt);
+      if (e.weakenT) e.weakenT = Math.max(0, e.weakenT - dt);
+      if (e.burning > 0) {
+        e.burning -= dt;
+        e.burn = 0.12;
+        hurtEnemy(e, state.dmg * 0.35 * dt, null);
+        if (e.dead) continue;
+      }
       const slowMul = e.slowed > 0 ? 0.45 : 1;
       const dx = p.x - e.x, dy = p.y - e.y;
       const d = Math.hypot(dx, dy) || 1;
@@ -1315,8 +1637,8 @@
           e.x += e.cdir.x * 430 * dt; e.y += e.cdir.y * 430 * dt;
           const wall = (room.inset || 46) + e.r * 0.35;
           e.x = clamp(e.x, wall, room.w - wall); e.y = clamp(e.y, wall, room.h - wall);
-          if (touching) damagePlayer(e.dmg * 1.2);
-        } else if (touching) damagePlayer(e.dmg);
+          if (touching) damagePlayer(e.dmg * (e.weaken > 0 ? 0.6 : 1) * 1.2);
+        } else if (touching) damagePlayer(e.dmg * (e.weaken > 0 ? 0.6 : 1));
       } else if (e.kind === 'wraith') {
         if (d > 170) { e.x += (dx / d) * e.speed * slowMul * dt; e.y += (dy / d) * e.speed * slowMul * dt; }
         e.shoot -= dt * slowMul;
@@ -1326,12 +1648,12 @@
           room.projectiles.push({ x: e.x, y: e.y, vx: Math.cos(a) * 195, vy: Math.sin(a) * 195,
             r: 7, dmg: 9 + state.depth, t: 4, kind: 'orb', hostile: true });
         }
-        if (touching) damagePlayer(e.dmg * 0.6);
+        if (touching) damagePlayer(e.dmg * (e.weaken > 0 ? 0.6 : 1) * 0.6);
       } else {
         e.x += (dx / d) * e.speed * slowMul * dt;
         e.y += (dy / d) * e.speed * slowMul * dt;
-        if (e.kind === 'brute' && e.atk <= 0 && touching) { e.atk = 0.9; damagePlayer(e.dmg); }
-        else if (e.kind === 'shade' && touching) damagePlayer(e.dmg * 0.55);
+        if (e.kind === 'brute' && e.atk <= 0 && touching) { e.atk = 0.9; damagePlayer(e.dmg * (e.weaken > 0 ? 0.6 : 1)); }
+        else if (e.kind === 'shade' && touching) damagePlayer(e.dmg * (e.weaken > 0 ? 0.6 : 1) * 0.55);
       }
       e.atk = Math.max(0, (e.atk || 0) - dt);
       e.x += (e.kx || 0) * dt; e.y += (e.ky || 0) * dt;
@@ -1344,6 +1666,7 @@
     room.enemies = room.enemies.filter((e) => !e.dead);
 
     // projectiles
+    const sse = state.se.special || {};
     for (const pr of room.projectiles) {
       // impact rings, bursts and debris only age; they are drawn, not simulated
       if (pr.kind === 'spark' || pr.kind === 'blast' || pr.kind === 'impact' ||
@@ -1364,8 +1687,28 @@
           const hx = p.x - pr.x, hy = p.y - pr.y;
           const hd = Math.hypot(hx, hy) || 1;
           pr.vx = (hx / hd) * 620; pr.vy = (hy / hd) * 620;
+          if (sse.specShield) state.shield = Math.min(state.shieldMax, state.shield + 0.02);
+          if (sse.specCharm) { state.hp = Math.min(state.maxHp, state.hp + dt * 6); }
+          // Riptide: the return pass hauls the foes it catches back with it, so
+          // the blade lands them on the hero's doorstep instead of only cutting.
+          if (sse.drag) {
+            for (const e of room.enemies) {
+              if (e.dead) continue;
+              if (Math.hypot(pr.x - e.x, pr.y - e.y) < 120) { e.kx = pr.vx * 0.55; e.ky = pr.vy * 0.55; }
+            }
+          }
         }
         pr.x += pr.vx * dt; pr.y += pr.vy * dt;
+        // Lightning in the wake, poison in the grass, ice on the cut — each is the
+        // same blade with a different god bound to the slot.
+        if (sse.trail) {
+          pr.trail = (pr.trail || 0) + dt;
+          if (pr.trail > 0.05) { pr.trail = 0; room.projectiles.push({ x: pr.x, y: pr.y, t: 0.16, kind: 'spark' }); }
+        }
+        if (sse.specMist) {
+          pr.trail = (pr.trail || 0) + dt;
+          if (pr.trail > 0.12) { pr.trail = 0; room.mist.push({ x: pr.x, y: pr.y, r: 34, t: 2.4 }); }
+        }
         // Each foe is cut once per pass, so a hit does not repeat every frame.
         const pass = pr.returning ? 1 : 0;
         pr.hitSet = (pr.hitSet || []).filter((k) => k.pass === pass);
@@ -1373,12 +1716,29 @@
           if (e.dead) continue;
           if (pr.hitSet.some((k) => k.e === e)) continue;
           if (Math.hypot(pr.x - e.x, pr.y - e.y) < pr.r + e.r) {
-            hurtEnemy(e, pr.dmg, { x: pr.vx, y: pr.vy });
+            let dmg = pr.dmg * (pr.returning && sse.specHeavy ? 1.3 : 1);
+            if (sse.specCrit && Math.random() < sse.specCrit) dmg *= 2;
+            hurtEnemy(e, dmg, { x: pr.vx, y: pr.vy });
             if (state.slow) e.slowed = 1.6;
+            if (sse.specFrost) e.slowed = Math.max(e.slowed || 0, 2.4);
+            if (sse.specBurn) e.burning = 2.5;
+            if (sse.specCharm) e.weaken = 6;
+            // Storm Blade: each cut arcs lightning into whoever stands beside the
+            // victim, so the throw spreads rather than only hitting the line.
+            if (sse.specChain) {
+              for (const o of room.enemies) {
+                if (o === e || o.dead) continue;
+                if (Math.hypot(o.x - e.x, o.y - e.y) < 120) hurtEnemy(o, dmg * 0.5, null);
+              }
+              room.projectiles.push({ x: e.x, y: e.y, t: 0.18, kind: 'spark' });
+            }
             pr.hitSet.push({ e, pass });
           }
         }
-        if (pr.returning && Math.hypot(pr.x - p.x, pr.y - p.y) < 22) pr.t = 0;
+        if (pr.returning && Math.hypot(pr.x - p.x, pr.y - p.y) < 22) {
+          pr.t = 0;
+          if (sse.specShield) { state.shield = Math.min(state.shieldMax, state.shield + 1); state.inv = Math.max(state.inv, 0.5); }
+        }
         continue;
       }
       pr.t -= dt;
@@ -1393,7 +1753,7 @@
         for (const e of room.enemies) {
           if (e.dead) continue;
           if (Math.hypot(pr.x - e.x, pr.y - e.y) < pr.r + e.r) {
-            hurtEnemy(e, pr.dmg, { x: pr.vx, y: pr.vy });
+            hurtEnemy(e, pr.dmg, { x: pr.vx, y: pr.vy }, pr.crit);
             if (state.slow) e.slowed = 1.6;
             room.projectiles.push({ x: pr.x, y: pr.y, t: 0.14, kind: 'spark' });
             pr.t = 0;
@@ -1412,6 +1772,16 @@
       }
     }
     room.mist = room.mist.filter((m) => m.t > 0);
+
+    // burning ground left by a fire god's burst
+    for (const f of room.fire) {
+      f.t -= dt;
+      for (const e of room.enemies) {
+        if (e.dead) continue;
+        if (dist(e, f) < f.r) { e.burn = 0.12; hurtEnemy(e, state.dmg * 0.8 * dt, null); }
+      }
+    }
+    room.fire = room.fire.filter((f) => f.t > 0);
 
     for (const fl of room.floaters) fl.t -= dt;
     room.floaters = room.floaters.filter((fl) => fl.t > 0);
@@ -1485,7 +1855,10 @@
     document.getElementById('goldChip').textContent = state.obols + ' obols' +
       (state.shield > 0 ? ' · shield ' + state.shield : '');
     document.getElementById('boonList').textContent =
-      state.boons.length ? state.boons.map((b) => b.god).join(' · ') : 'no boons';
+      SLOTS.map((s) => {
+        const h = state.slots[s.id];
+        return h ? h.god : '—';
+      }).join(' · ');
   }
 
   // ---------------------------------------------------------------- reward
@@ -1511,44 +1884,167 @@
 
   function openReward() {
     mode = 'reward';
-    // On a resume the same three boons come back, so leaving mid-choice and
+    // On a resume the same three gods come back, so leaving mid-choice and
     // returning does not reroll the offer.
     let pick;
     if (state.offer && state.offer.length) {
-      pick = state.offer.map((id) => BOONS.find((b) => b.id === id)).filter(Boolean);
+      pick = state.offer.map((id) => GODS.find((g) => g.id === id)).filter(Boolean);
     } else {
-      const pool = BOONS.filter((b) => !state.takenIds[b.id]);
+      const pool = GODS.slice();
       pick = [];
       while (pick.length < 3 && pool.length) pick.push(pool.splice(randi(0, pool.length - 1), 1)[0]);
     }
-    state.offer = pick.map((b) => b.id);
+    state.offer = pick.map((g) => g.id);
     const body = document.getElementById('cardsBody');
     body.innerHTML = '';
     document.getElementById('cardsTitle').textContent =
-      'Depth ' + state.depth + ' cleared — take a boon';
-    for (const b of pick) {
+      'Depth ' + state.depth + ' cleared — take a god\'s favour';
+    for (const g of pick) {
       const el = document.createElement('button');
       el.className = 'card';
       el.type = 'button';
-      el.innerHTML = '<em>' + b.god.toUpperCase() + '</em><b>' + b.name + '</b><span>' + b.desc + '</span>';
-      el.addEventListener('click', () => takeBoon(b));
+      // The card names the god and shows the move the game would choose, so the
+      // choice reads as "Zeus, probably on Strike" rather than a bare stat line.
+      const best = SLOTS.find((s) => g.variants[s.id].rec) || SLOTS[0];
+      el.innerHTML = '<em>' + g.god.toUpperCase() + ' · ' + g.theme + '</em><b>' +
+        g.variants[best.id].name + '</b><span>' + g.variants[best.id].desc + '</span>';
+      el.addEventListener('click', () => offerSlots(g.id));
       body.appendChild(el);
     }
-
-    // Only boons are offered here. The arm is chosen before the run and stays
-    // with the hero for the whole descent.
     show('cards');
   }
 
-  function takeBoon(b) {
-    b.apply(state);
-    state.boons.push({ god: b.god, name: b.name });
-    state.takenIds[b.id] = true;
+  // The chooser: one card per move, the recommended one flagged. This is the
+  // "where do I put it" decision the run turns on.
+  function offerSlots(godId) {
+    const g = GODS.find((x) => x.id === godId);
+    if (!g) return;
+    state.pendingPower = godId;
     state.offer = null;
+    mode = 'slot';
+    hide('cards');
+    saveRun();
+
+    const body = document.getElementById('slotsBody');
+    body.innerHTML = '';
+    document.getElementById('slotsTitle').textContent = g.god + ' offers a favour';
+    document.getElementById('slotsSub').textContent =
+      'Bind it to one move. The glowing card is what the game suggests for this god.';
+    for (const slot of SLOTS) {
+      const v = g.variants[slot.id];
+      const held = state.slots[slot.id];
+      const el = document.createElement('button');
+      el.className = 'slot' + (v.rec ? ' rec' : '') + (held ? ' eq' : '');
+      el.type = 'button';
+      el.innerHTML =
+        '<em>' + slot.label.toUpperCase() + ' · ' + slot.blurb + '</em>' +
+        '<b>' + v.name + '</b>' +
+        '<span>' + v.desc + '</span>' +
+        (held ? '<span class="found">Replaces ' + held.god + ' — ' + held.name + '</span>'
+              : '<span>' + slot.label + ' is empty</span>') +
+        (v.rec ? '<span class="tag">SUGGESTED</span>' : '');
+      el.addEventListener('click', () => bindPower(godId, slot.id));
+      body.appendChild(el);
+    }
+    show('slots');
+  }
+
+  function bindPower(godId, slotId) {
+    const g = GODS.find((x) => x.id === godId);
+    if (!g) return;
+    const v = g.variants[slotId];
+    v.apply(state);
+    // Only the flags for this slot move, so a later god in another slot cannot be
+    // undone by this one and the effects stay where the player put them.
+    state.se[slotId] = Object.assign({}, v.flags);
+    state.slots[slotId] = { god: g.god, godId: g.id, name: v.name, slot: slotId };
+    state.pendingPower = null;
+    hide('slots');
     hide('cards');
     mode = 'playing';
     saveRun();
-    toast(b.god + ': ' + b.name);
+    toast(g.god + ' · ' + v.name + ' → ' + slotLabels[slotId]);
+  }
+
+  const slotLabels = { attack: 'Strike', special: 'Special', spell: 'Spell' };
+
+  // -------------------------------------------------------------- gods' market
+  // Mid-run only, the way Charon's shop works: the obols you are carrying are
+  // the only currency, and buying a god's favour drops you into the same slot
+  // chooser a cleared chamber would have.
+  function openShop() {
+    if (!state || !state.player) return;
+    shopReturn = mode === 'paused' ? 'paused' : 'playing';
+    mode = 'shop';
+    renderShop();
+    show('shop');
+    hide('menu');
+  }
+  let shopReturn = 'playing';
+
+  function renderShop() {
+    document.getElementById('shopObols').innerHTML =
+      'You carry <b>' + state.obols + '</b> obols.';
+    const body = document.getElementById('shopBody');
+    body.innerHTML = '';
+    for (const item of SHOP_ITEMS) {
+      const g = GODS.find((x) => x.id === item.id);
+      const el = document.createElement('button');
+      const poor = state.obols < item.price;
+      el.className = 'shopItem' + (poor ? ' poor' : '');
+      el.type = 'button';
+      el.innerHTML = '<b>' + g.god + '</b><span>' + g.theme + '</span>' +
+        '<span class="price">' + item.price + ' obols</span>';
+      el.addEventListener('click', () => {
+        if (state.obols < item.price) { toast('Not enough obols'); return; }
+        state.obols -= item.price;
+        hide('shop');
+        offerSlots(g.id);
+      });
+      body.appendChild(el);
+    }
+  }
+
+  function closeShop() {
+    hide('shop');
+    if (shopReturn === 'paused') {
+      mode = 'paused';
+      show('pause');
+      refreshPausePowers();
+    } else {
+      mode = 'playing';
+      lastT = performance.now();
+      showTouch();
+      refreshAbilityButtons();
+    }
+  }
+
+  // ---------------------------------------------------------------- pause
+  function refreshPausePowers() {
+    const lines = SLOTS.map((s) => {
+      const held = state.slots[s.id];
+      return s.label + ': ' + (held ? held.god + ' — ' + held.name : 'empty');
+    });
+    document.getElementById('pausePowers').innerHTML =
+      lines.join('<br />') + '<br /><br />Depth ' + state.depth +
+      ' · ' + state.obols + ' obols · ' + state.kills + ' foes felled';
+  }
+
+  function openPause() {
+    if (mode !== 'playing') return;
+    mode = 'paused';
+    saveRun();
+    refreshPausePowers();
+    show('pause');
+    hideTouch();
+  }
+
+  function closePause() {
+    hide('pause');
+    mode = 'playing';
+    lastT = performance.now();
+    showTouch();
+    refreshAbilityButtons();
   }
 
   // ------------------------------------------------------------- save/resume
@@ -1558,10 +2054,10 @@
   // foes are written; everything else (the road, the torches, the stones) is
   // rebuilt from the seed, which keeps the save small.
   const SAVE_KEY = 'ue_run_v1';
-  const SAVE_VERSION = 1;
+  const SAVE_VERSION = 2;
   const SAVE_FIELDS = ['hp', 'maxHp', 'dmg', 'speed', 'reach', 'knock', 'arc', 'slow',
                        'mist', 'blast', 'shield', 'shieldMax', 'dashPow', 'dashCdMax',
-                       'splCdMax', 'specCdMax',
+                       'splCdMax', 'specCdMax', 'slots', 'se', 'pendingPower',
                        'xp', 'level', 'obols', 'depth', 'kills', 'boons', 'takenIds'];
   // A save every few seconds, plus one at the moment the app is hidden, means a
   // run is at most a couple of blows old. Boon effects live in the saved numbers,
@@ -1571,7 +2067,8 @@
   function saveRun() {
     if (!state || !room) return;
     try {
-      const data = { v: SAVE_VERSION, mode: mode === 'reward' ? 'reward' : 'playing',
+      const data = { v: SAVE_VERSION,
+                     mode: (mode === 'reward' || mode === 'slot') ? mode : 'playing',
                      weapon: state.weapon.id,
                      offer: state.offer || null, roomSeed: room.seed,
                      door: room.door, entry: room.entry, roomT: room.t,
@@ -1641,6 +2138,9 @@
     state.boons = data.boons || [];
     state.offer = data.offer || null;
     state.dashCd = 0; state.dashT = 0; state.inv = 0; state.swingT = 0; state.swingCd = 0;
+    state.slots = state.slots || { attack: null, special: null, spell: null };
+    state.se = state.se || { attack: {}, special: {}, spell: {} };
+    state.pendingPower = state.pendingPower || null;
 
     hide('menu'); hide('help'); hide('dead'); hide('cards');
     document.getElementById('hud').classList.add('on');
@@ -1658,7 +2158,10 @@
     cam.y = clamp(state.player.y - viewH / 2, 0, Math.max(0, room.h - viewH));
 
     mode = 'playing';
-    if (state.offer && state.offer.length) openReward();
+    // A choice left hanging comes back as the same choice: the god cards, or the
+    // slot chooser if the god had already been picked.
+    if (state.pendingPower) offerSlots(state.pendingPower);
+    else if (state.offer && state.offer.length) openReward();
     else toast('Depth ' + state.depth + ' — resumed');
     return true;
   }
@@ -1687,6 +2190,17 @@
       ctx.globalAlpha = clamp(m.t / 4.5, 0, 1) * 0.35;
       ctx.fillStyle = '#7ce0a0';
       ctx.beginPath(); ctx.arc(m.x, m.y, m.r, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // burning ground
+    for (const f of room.fire || []) {
+      ctx.globalAlpha = clamp(f.t / 3, 0, 1) * 0.4;
+      const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r);
+      g.addColorStop(0, '#ff9a3c');
+      g.addColorStop(1, 'rgba(255,90,20,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, TAU); ctx.fill();
       ctx.globalAlpha = 1;
     }
 
@@ -3056,6 +3570,31 @@
     toast('Run saved');
   });
 
+  // Pause stops the simulation without leaving the run. The overlay carries the
+  // resume, the market and the way out.
+  document.getElementById('pauseBtn').addEventListener('click', openPause);
+  document.getElementById('pauseResume').addEventListener('click', closePause);
+  document.getElementById('pauseShop').addEventListener('click', () => { hide('pause'); openShop(); });
+  document.getElementById('pauseSave').addEventListener('click', () => {
+    saveRun();
+    hide('pause');
+    document.getElementById('hud').classList.remove('on');
+    hideTouch();
+    mode = 'menu';
+    show('menu');
+    refreshResume();
+    toast('Run saved — continue from the menu');
+  });
+  document.getElementById('shopBack').addEventListener('click', closeShop);
+  // Escape is the one key a keyboard has that the pad lacks, so it doubles as
+  // pause rather than taking a slot in the ability rotation.
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' || e.key === 'p') {
+      if (mode === 'playing') openPause();
+      else if (mode === 'paused') closePause();
+    }
+  });
+
   // Save the moment the app goes to the background or closes. On a phone this is
   // the usual way a run ends, and it makes the autosave gap irrelevant.
   document.addEventListener('visibilitychange', () => {
@@ -3067,7 +3606,7 @@
   try {
     const best = localStorage.getItem('ue_best');
     if (best) document.getElementById('bestLine').textContent = 'Best depth so far: ' + best;
-    document.getElementById('buildLine').textContent = 'art build 8';
+    document.getElementById('buildLine').textContent = 'art build 9';
   } catch (e) {}
   refreshResume();
 
@@ -3093,7 +3632,12 @@
                     get padActive() { return padActive; }, get shake() { return shake; },
                     get hitStop() { return hitStop; }, setPadActive,
                     swing, hurtEnemy, castSpell, castSpecial,
-                    pressSpell, pressSpecial, readPad, PAD, padEdge };
+                    pressSpell, pressSpecial, readPad, PAD, padEdge,
+                    gods: GODS, slots: SLOTS, shopItems: SHOP_ITEMS,
+                    bindPower, offerSlots, openShop, closeShop, openPause, closePause,
+                    // One simulation step, gated the same way the frame loop is, so
+                    // a headless check can advance the room without touching a clock.
+                    tick: (dt) => { if (mode === 'playing') update(dt); } };
 
   // Offline PWA. Browsers do not reliably re-check a service worker on their
   // own, so look for a new build on every load and in the background, then

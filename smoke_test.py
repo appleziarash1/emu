@@ -54,7 +54,8 @@ with sync_playwright() as pw:
             """() => {
               const g = window.__game, r = g.room, s = g.state;
               return { mode: g.mode, depth: s ? s.depth : null, enemies: r ? r.enemies.length : null,
-                       boss: r ? !!r.isBoss : null, cleared: r ? r.cleared : null, boons: s ? s.boons.length : null };
+                       boss: r ? !!r.isBoss : null, cleared: r ? r.cleared : null,
+                       powers: s ? Object.values(s.slots).filter(Boolean).length : null };
             }"""
         )
         phases.append(snap)
@@ -62,16 +63,27 @@ with sync_playwright() as pw:
         if snap["mode"] == "corridor":
             page.evaluate("window.__game.skipCorridor()")
             page.wait_for_timeout(80)
-        # when a reward is on screen, take the first card
+        # when a reward is on screen, take the first god, then bind it to the
+        # slot the game suggests
         if snap["mode"] == "reward":
             page.evaluate("document.querySelector('#cardsBody .card').click()")
+            page.wait_for_timeout(120)
+        if snap["mode"] == "slot":
+            page.evaluate(
+                """() => {
+                  const slot = document.querySelector('#slotsBody .slot.rec') ||
+                               document.querySelector('#slotsBody .slot');
+                  slot.click();
+                }"""
+            )
             page.wait_for_timeout(120)
         if snap["mode"] == "dead":
             break
 
     final = page.evaluate(
         """() => ({ mode: window.__game.mode, depth: window.__game.state.depth,
-                    kills: window.__game.state.kills, boons: window.__game.state.boons.length })"""
+                    kills: window.__game.state.kills,
+                    powers: Object.values(window.__game.state.slots).filter(Boolean).length })"""
     )
     depths = sorted({p["depth"] for p in phases if p["depth"]})
     bosses = [p["depth"] for p in phases if p["boss"]]

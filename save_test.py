@@ -171,7 +171,7 @@ with sync_playwright() as pw:
       const cards = [...document.querySelectorAll('#cards .card b')].map((b) => b.textContent);
       return { mode: window.__game.mode, cards };
     }""")
-    check("clearing a chamber opens the reward screen with three boons",
+    check("clearing a chamber opens the reward screen with three gods",
           offer["mode"] == "reward" and len(offer["cards"]) == 3, offer)
 
     page.evaluate("() => window.__game.save()")
@@ -186,10 +186,33 @@ with sync_playwright() as pw:
     check("an interrupted boon choice comes back the same",
           again["mode"] == "reward" and again["cards"] == offer["cards"], (again, offer))
 
-    # Taking the boon must clear that offer and save the run, so the next open
-    # does not ask again.
+    # Taking the god must clear that offer; the slot chooser is what follows, and
+    # binding the power is what actually writes it into the run.
     chosen = page.evaluate("""() => {
       const first = document.querySelector('#cards .card');
+      first.click();
+      const slots = [...document.querySelectorAll('#slots .slot')];
+      return { mode: window.__game.mode, slots: slots.length,
+               god: first.querySelector('em').textContent };
+    }""")
+    check("picking a god moves on to the slot chooser",
+          chosen["mode"] == "slot" and chosen["slots"] == 3, chosen)
+
+    page.evaluate("() => window.__game.save()")
+    page.reload(wait_until="load")
+    page.wait_for_timeout(250)
+    page.click("#resumeBtn")
+    page.wait_for_timeout(400)
+    held = page.evaluate("""() => {
+      const g = window.__game;
+      const slots = [...document.querySelectorAll('#slots .slot')];
+      return { mode: g.mode, slots: slots.length, pending: g.state.pendingPower };
+    }""")
+    check("an interrupted slot choice comes back the same",
+          held["mode"] == "slot" and held["slots"] == 3 and held["pending"] is not None, held)
+
+    slotName = page.evaluate("""() => {
+      const first = document.querySelector('#slots .slot');
       const name = first.querySelector('b').textContent;
       first.click();
       return name;
@@ -197,12 +220,13 @@ with sync_playwright() as pw:
     page.wait_for_timeout(250)
     after = page.evaluate("""() => {
       const g = window.__game;
-      return { mode: g.mode, boons: g.state.boons.map((b) => b.name),
-               offer: g.state.offer, hasSave: g.hasSave() };
+      return { mode: g.mode, slots: g.state.slots, offer: g.state.offer,
+               pending: g.state.pendingPower, hasSave: g.hasSave() };
     }""")
-    check("taking a boon applies it and clears the offer",
+    bound = [v for v in after["slots"].values() if v]
+    check("binding a power fills one slot and clears the choice",
           after["mode"] == "playing" and after["offer"] is None and
-          chosen in after["boons"], after)
+          after["pending"] is None and len(bound) == 1 and bound[0]["name"] == slotName, after)
 
     page.reload(wait_until="load")
     page.wait_for_timeout(250)
@@ -210,10 +234,11 @@ with sync_playwright() as pw:
     page.wait_for_timeout(350)
     replayed = page.evaluate("""() => {
       const g = window.__game;
-      return { mode: g.mode, boons: g.state.boons.map((b) => b.name) };
+      return { mode: g.mode, slots: g.state.slots };
     }""")
-    check("the boon is still held after a reopen",
-          replayed["mode"] == "playing" and chosen in replayed["boons"], replayed)
+    check("the bound power is still held after a reopen",
+          replayed["mode"] == "playing" and
+          [v for v in replayed["slots"].values() if v][0]["name"] == slotName, replayed)
 
     # Boon effects are stored as numbers, so they must survive too. Give the hero
     # a damage boon and check the number comes back rather than the base value.

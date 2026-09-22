@@ -110,7 +110,7 @@ with sync_playwright() as pw:
     }""")
     check("arrow damages the distant foe", landed["hp"] is not None and landed["hp"] < 900, landed)
 
-    # --- the reward screen offers boons only: the arm is locked for the run
+    # --- the reward screen offers gods only: the arm is locked for the run
     page.evaluate("""() => {
       const g = window.__game, s = g.state;
       s.depth = 1;
@@ -129,18 +129,34 @@ with sync_playwright() as pw:
                                              c.textContent.includes('Bow')).length,
                title: document.getElementById('cardsTitle').textContent };
     }""")
-    check("reward screen offers boons only", cards["trades"] == 0 and cards["weapons"] == 0, cards)
-    check("reward screen still shows boon cards", cards["count"] >= 3, cards["count"])
+    check("reward screen offers gods only", cards["trades"] == 0 and cards["weapons"] == 0, cards)
+    check("reward screen still shows god cards", cards["count"] >= 3, cards["count"])
 
+    # A god card no longer binds itself: it opens the slot chooser, and the
+    # binding only happens when the player says where the power goes.
     picked = page.evaluate("""() => {
       const g = window.__game;
       const held = g.state.weapon.id;
       document.querySelector('#cardsBody .card').click();
-      return { held, after: g.state.weapon.id, mode: g.mode, boons: g.state.boons.length };
+      const slots = [...document.querySelectorAll('#slotsBody .slot')];
+      return { held, mode: g.mode, slots: slots.length,
+               suggested: slots.filter((s) => s.querySelector('.tag')).length,
+               after: g.state.weapon.id };
     }""")
-    check("taking a boon keeps the chosen arm",
-          picked["after"] == picked["held"] and picked["mode"] == "playing" and picked["boons"] == 1,
-          picked)
+    check("picking a god opens the slot chooser",
+          picked["mode"] == "slot" and picked["slots"] == 3, picked)
+    check("the chooser flags a suggested slot", picked["suggested"] >= 1, picked)
+
+    bound = page.evaluate("""() => {
+      const g = window.__game;
+      const held = g.state.weapon.id;
+      document.querySelector('#slotsBody .slot').click();
+      return { held, after: g.state.weapon.id, mode: g.mode,
+               filled: Object.values(g.state.slots).filter(Boolean).length };
+    }""")
+    check("binding a power keeps the chosen arm and returns to play",
+          bound["after"] == bound["held"] and bound["mode"] == "playing" and
+          bound["filled"] == 1, bound)
 
     # --- the road: a chamber has one, and it runs from the entry to the gate
     road = page.evaluate("""() => {

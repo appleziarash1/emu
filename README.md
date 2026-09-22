@@ -6,7 +6,44 @@ keeps working offline once added to the iPhone Home Screen.
 
 This is **not** Hades and contains none of its assets or code. It is an homage
 built around the same ideas: descend through chambers, take a god's boon after
-each one, and fight the Warden at the gate.
+each one and choose which of your moves it empowers, and fight the Warden at
+the gate.
+
+## Gods and boons
+
+Eleven gods, each with a different reward for each of the three moves. Taking a
+god's favour does not decide where it goes: the reward card opens a chooser with
+one option per move, and the option the god naturally favours is flagged
+**SUGGESTED**. Bound powers live in three slots — Strike, Special, Spell — and a
+power only changes the move it was bound to. Zeus on Strike chains lightning to
+the foes beside your target; Zeus on Spell makes the burst arc instead. Binding a
+second god into a slot replaces what was there.
+
+| God | Theme |
+| --- | --- |
+| Zeus | chain lightning |
+| Athena | aegis and reflection |
+| Poseidon | tidal force |
+| Ares | raw bloodshed |
+| Artemis | hunt and crit |
+| Aphrodite | charm and healing |
+| Demeter | frost |
+| Hermes | speed |
+| Dionysus | hangover and poison |
+| Hephaestus | forge and fire |
+| Chaos | power at a price |
+
+The three bound gods are named along the bottom of the HUD, and again on the
+pause screen.
+
+## Obols and the Gods' Market
+
+Felled foes drop obols. Pause the run and open the **Gods' Market** to spend
+them: every god is on the shelf, priced from 110 obols up, and what you cannot
+afford is dimmed. Buying one opens the same slot chooser a cleared chamber
+would, so the market is a way to fill the move you are missing rather than a
+reroll of the reward screen. Obols and bound powers are part of the save, so the
+purse survives closing the app.
 
 ## Arms
 
@@ -59,8 +96,9 @@ The run autosaves to the browser: every few seconds while you play, each time a
 chamber is entered, and the moment the app goes to the background or closes.
 Reopening the page (or the installed app) shows a **Continue run** button on the
 menu, and it drops you back into the same chamber — same layout, same gate, the
-foes you had not finished off standing at the health you left them at, your boons
-still in hand, and a boon choice you had not made yet still on offer.
+foes you had not finished off standing at the health you left them at, your
+powers still bound, and a choice you had not made yet still on offer — the god
+cards, or the slot chooser if you had already picked the god.
 
 Dying or escaping ends the run and clears the save, so a finished run is never
 offered again. The best depth on the menu is kept separately and lives on.
@@ -75,8 +113,10 @@ to replay a fight.
 - `index.html` — the whole game (canvas renderer, sim, touch UI, PWA registration)
 - `serve.js` — tiny static server with correct MIME types for the manifest and SW
 - `manifest.webmanifest`, `sw.js`, `icon-*.png` — PWA install + offline shell
-- `smoke_test.py` — headless playthrough: clears chambers, takes boons, beats a boss
-- `save_test.py` — the run survives a reload: layout, foes, health, boons, offers
+- `smoke_test.py` — headless playthrough: clears chambers, takes gods, binds powers, beats a boss
+- `save_test.py` — the run survives a reload: layout, foes, health, bound powers, offers
+- `god_test.py` — every god's power in every slot actually fires, the chooser, the
+  market's prices and a too-thin purse, and pause/resume
 - `pwa_test.py` — checks install criteria, offline reload, and the touch joystick
 - `control_test.py` — the floating stick (spawn, dead zone, tracking, release),
   controller takeover, the feel of a landed hit, and the desktop keyboard path
@@ -96,6 +136,7 @@ python3 pwa_test.py                                        # expects all checks 
 python3 control_test.py                                    # joystick, controller, hit feel
 python3 feature_test.py                                    # weapons, big chambers, maps
 python3 art_test.py                                        # per-character palette check
+python3 god_test.py                                        # god powers, slots, market, pause
 python3 update_test.py                                     # proves updates and offline both work
 python3 stale_phone_test.py                                # old installs heal within two reopens
 python3 clear_data_test.py                                 # clearing site data heals in one
@@ -128,6 +169,9 @@ the running build is always visible.
 - `SPECIAL` / `I` / gamepad Y hurls a blade that cuts one side of the room and
   comes back to your hand, cutting the same foes again on the way home.
 - `DASH` / space / gamepad A dashes, and makes you briefly untouchable.
+- `❚❚` on the HUD (or `Esc` / `P`) pauses the run. The pause screen resumes,
+  opens the Gods' Market, or saves and returns to the menu. Nothing moves while
+  it is up.
 - `WASD`/arrows or a gamepad's left stick also move you. On a desktop the mouse can
   drag the floating stick too.
 - A connected controller replaces the touch controls: they hide while it is in use
