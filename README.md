@@ -53,12 +53,30 @@ PORT=12001 node serve.js
 Then open `http://localhost:12001/`. On a phone, add `?debug=1` to show a live
 state readout.
 
+## Continue where you left off
+
+The run autosaves to the browser: every few seconds while you play, each time a
+chamber is entered, and the moment the app goes to the background or closes.
+Reopening the page (or the installed app) shows a **Continue run** button on the
+menu, and it drops you back into the same chamber — same layout, same gate, the
+foes you had not finished off standing at the health you left them at, your boons
+still in hand, and a boon choice you had not made yet still on offer.
+
+Dying or escaping ends the run and clears the save, so a finished run is never
+offered again. The best depth on the menu is kept separately and lives on.
+
+Two things make this cheap: enemies are stored explicitly, and the chamber's
+layout is rebuilt from a seed rather than saved stone by stone. The seed feeds the
+room's decoration only; combat rolls stay on `Math.random`, so the save never has
+to replay a fight.
+
 ## Files
 
 - `index.html` — the whole game (canvas renderer, sim, touch UI, PWA registration)
 - `serve.js` — tiny static server with correct MIME types for the manifest and SW
 - `manifest.webmanifest`, `sw.js`, `icon-*.png` — PWA install + offline shell
 - `smoke_test.py` — headless playthrough: clears chambers, takes boons, beats a boss
+- `save_test.py` — the run survives a reload: layout, foes, health, boons, offers
 - `pwa_test.py` — checks install criteria, offline reload, and the touch joystick
 - `control_test.py` — the floating stick (spawn, dead zone, tracking, release),
   controller takeover, the feel of a landed hit, and the desktop keyboard path
@@ -73,6 +91,7 @@ state readout.
 
 ```bash
 python3 smoke_test.py "http://localhost:12001/?debug=1"   # expects depths 1..8+, a boss at depth 5
+python3 save_test.py                                       # resume rebuilds the exact chamber
 python3 pwa_test.py                                        # expects all checks True
 python3 control_test.py                                    # joystick, controller, hit feel
 python3 feature_test.py                                    # weapons, big chambers, maps

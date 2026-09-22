@@ -6,7 +6,7 @@
 //   - navigations and the app shell: try the network, fall back to cache offline
 //   - icons and the manifest: serve cache immediately, refresh in the background
 // Bump VERSION on every release; activate() deletes every other cache.
-const VERSION = 'v8';
+const VERSION = 'v9';
 const SHELL_CACHE = `underworld-shell-${VERSION}`;
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-180.png', './icon-512.png'];
 

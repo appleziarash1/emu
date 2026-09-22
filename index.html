@@ -107,6 +107,11 @@
              background: #ffffff14; border: 1px solid #ffffff22; border-radius: 999px;
              padding: 6px 12px; pointer-events: none; }
   #hud.on #keyHint.on { display: block; }
+  #saveBtn { position: absolute; right: 12px; top: calc(env(safe-area-inset-top) + 56px);
+    pointer-events: auto; font: 700 11px system-ui, sans-serif; letter-spacing: .04em;
+    padding: 6px 11px; border-radius: 999px; border: 0; color: #f3ecff;
+    background: #ffffff1c; backdrop-filter: blur(6px); }
+  #saveBtn:active { transform: translateY(1px); background: #ffffff2e; }
 
   .tbtn { position: absolute; z-index: 12; border-radius: 50%; border: 2px solid #ffffff33;
           background: #ffffff1a; color: #fff; font-weight: 800; display: none;
@@ -174,6 +179,7 @@
       <div class="mapLabel">gate</div>
     </div>
     <div id="keyHint">WASD move &middot; J strike &middot; Space dash</div>
+    <button id="saveBtn" type="button">SAVE</button>
   </div>
 
   <div id="touchZone"></div>
@@ -219,6 +225,7 @@
       <button class="btn" id="playBtn" type="button">Tap to Play</button>
     </div>
     <div class="row">
+      <button class="btn ghost" id="resumeBtn" type="button" hidden>Continue run</button>
       <button class="btn ghost" id="helpBtn" type="button">How to play</button>
     </div>
     <p class="sub" id="bestLine" style="font-size:12px"></p>
@@ -466,7 +473,19 @@
   }
 
   // ------------------------------------------------------------- utilities
-  const rand = (a, b) => a + Math.random() * (b - a);
+  // Room dressing is generated with a seeded source, not Math.random, so the
+  // authoring pass can be replayed. Enemies are rolled from Math.random during
+  // play and stored in the save, so combat never depends on this stream.
+  let rngState = 0;
+  function seedRng(seed) { rngState = seed >>> 0; }
+  function rng() {
+    rngState = (rngState + 0x6d2b79f5) >>> 0;
+    let t = rngState;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  }
+  const rand = (a, b) => a + rng() * (b - a);
   const randi = (a, b) => Math.floor(rand(a, b + 1));
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -544,7 +563,7 @@
       dashPow: 640, dashCd: 0, dashCdMax: 0.9, dashT: 0, inv: 0,
       swingT: 0, swingCd: 0, weapon,
       xp: 0, level: 1, obols: 0,
-      depth: 1, kills: 0, boons: [], takenIds: {},
+      depth: 1, kills: 0, boons: [], takenIds: {}, offer: null, tAcc: 0,
     };
     state.hp = state.maxHp;
     newRoom();
@@ -614,28 +633,38 @@
   }
 
   function newRoom() {
-    const depth = state.depth;
     cam.scale = clamp(Math.min(VW, VH) / 430, 1, 1.9);
     const size = chamberSize();
     const w = size.w, h = size.h;
-    room = { w, h, enemies: [], projectiles: [], t: 0, mist: [], floaters: [], cleared: false, isBoss: depth % 5 === 0 };
-    state.player = { x: w / 2, y: h / 2, hx: 0, hy: 0, r: 15, kx: 0, ky: 0 };
     // place the exit door on a random wall
     const side = randi(0, 3);
-    room.door = side === 0 ? { x: w / 2, y: 8, w: 80, h: 14, side }
+    const door = side === 0 ? { x: w / 2, y: 8, w: 80, h: 14, side }
              : side === 1 ? { x: w - 8, y: h / 2, w: 14, h: 80, side }
              : side === 2 ? { x: w / 2, y: h - 8, w: 80, h: 14, side }
              : { x: 8, y: h / 2, w: 14, h: 80, side };
+    const entry = {
+      x: door.side === 1 ? 16 : door.side === 3 ? w - 16 : w / 2,
+      y: door.side === 0 ? h - 16 : door.side === 2 ? 16 : h / 2,
+    };
+    // A fresh seed per chamber. It is stored in the save so the dressing can be
+    // rebuilt exactly, instead of writing every stone and torch to storage.
+    buildRoom(w, h, door, entry, (Math.random() * 4294967296) >>> 0);
+    spawnRoomEnemies(state.depth);
+  }
+
+  // Lay out a chamber from its size, gate, entry and decoration seed. Kept apart
+  // from newRoom so a resumed run can rebuild the same room without rolling new
+  // foes into it.
+  function buildRoom(w, h, door, entry, seed) {
+    seedRng(seed);
+    room = { w, h, enemies: [], projectiles: [], t: 0, mist: [], floaters: [],
+             cleared: false, isBoss: state.depth % 5 === 0, seed, door, entry };
+    state.player = { x: w / 2, y: h / 2, hx: 0, hy: 0, r: 15, kx: 0, ky: 0 };
 
     // The chamber is a room the hero walks through, not an arena: a road runs in
     // from the wall opposite the gate and winds to the gate itself. Only the road
     // is dressed with stone, so the path reads at a glance.
-    const entry = {
-      x: room.door.side === 1 ? 16 : room.door.side === 3 ? w - 16 : w / 2,
-      y: room.door.side === 0 ? h - 16 : room.door.side === 2 ? 16 : h / 2,
-    };
-    room.entry = entry;
-    room.road = makeRoad(entry, { x: room.door.x, y: room.door.y }, w, h);
+    room.road = makeRoad(entry, { x: door.x, y: door.y }, w, h);
     // the wall inset: pillars, torches and props keep clear of it
     room.inset = 46;
 
@@ -658,7 +687,7 @@
       ]) {
         if (Math.hypot(spot.x - room.door.x, spot.y - room.door.y) < 90) continue;
         if (roadDistance(spot.x, spot.y) < 52) continue;
-        if (Math.random() < 0.45) continue;
+        if (rng() < 0.45) continue;
         room.torches.push({ x: spot.x, y: spot.y, seed: rand(0, 9), light: rand(95, 150) });
       }
     }
@@ -706,10 +735,6 @@
       if (roadDistance(vx, vy) < 44) continue;
       room.vases.push({ x: vx, y: vy, r: rand(8, 12), hp: 1 });
     }
-
-    // seal the gate with a collider-free marker: the arch is drawn, the room is
-    // "cleared" by defeating everything.
-    spawnRoomEnemies(depth);
   }
 
   function spawnRoomEnemies(depth) {
@@ -925,6 +950,7 @@
   function die() {
     mode = 'dead';
     dbg('died', state.depth);
+    clearSave();
     const best = Math.max(+(localStorage.getItem('ue_best') || 0), state.depth);
     try { localStorage.setItem('ue_best', String(best)); } catch (e) {}
     document.getElementById('deadStats').innerHTML =
@@ -934,10 +960,12 @@
     show('dead');
     document.getElementById('hud').classList.remove('on');
     hideTouch();
+    refreshResume();
   }
 
   function win() {
     mode = 'dead';
+    clearSave();
     const best = Math.max(+(localStorage.getItem('ue_best') || 0), state.depth);
     try { localStorage.setItem('ue_best', String(best)); } catch (e) {}
     document.querySelector('#dead h1').textContent = 'You escaped the Underworld';
@@ -949,6 +977,7 @@
     show('dead');
     document.getElementById('hud').classList.remove('on');
     hideTouch();
+    refreshResume();
   }
 
   // ---------------------------------------------------------------- corridor
@@ -976,6 +1005,7 @@
     document.getElementById('hud').classList.add('on');
     showTouch();
     mode = 'playing';
+    saveRun();
     toast('Depth ' + state.depth);
   }
 
@@ -1316,6 +1346,10 @@
       shake.y = rand(-1, 1) * shake.mag * k;
       if (shake.t === 0) { shake.mag = 0; shake.x = 0; shake.y = 0; }
     }
+    // Periodic autosave. Cheap enough to run on the play loop, and it means a
+    // closed tab costs seconds of progress rather than the whole run.
+    state.tAcc = (state.tAcc || 0) + dt;
+    if (state.tAcc >= SAVE_EVERY) { state.tAcc = 0; saveRun(); }
     updateHud();
   }
 
@@ -1353,9 +1387,17 @@
 
   function openReward() {
     mode = 'reward';
-    const pool = BOONS.filter((b) => !state.takenIds[b.id]);
-    const pick = [];
-    while (pick.length < 3 && pool.length) pick.push(pool.splice(randi(0, pool.length - 1), 1)[0]);
+    // On a resume the same three boons come back, so leaving mid-choice and
+    // returning does not reroll the offer.
+    let pick;
+    if (state.offer && state.offer.length) {
+      pick = state.offer.map((id) => BOONS.find((b) => b.id === id)).filter(Boolean);
+    } else {
+      const pool = BOONS.filter((b) => !state.takenIds[b.id]);
+      pick = [];
+      while (pick.length < 3 && pool.length) pick.push(pool.splice(randi(0, pool.length - 1), 1)[0]);
+    }
+    state.offer = pick.map((b) => b.id);
     const body = document.getElementById('cardsBody');
     body.innerHTML = '';
     document.getElementById('cardsTitle').textContent =
@@ -1378,9 +1420,122 @@
     b.apply(state);
     state.boons.push({ god: b.god, name: b.name });
     state.takenIds[b.id] = true;
+    state.offer = null;
     hide('cards');
     mode = 'playing';
+    saveRun();
     toast(b.god + ': ' + b.name);
+  }
+
+  // ------------------------------------------------------------- save/resume
+  // The run is written to local storage so closing the app and reopening it puts
+  // the hero back exactly where it was: same chamber, same foes at the same
+  // health, same boons, same rewards still on offer. Only the layout seed and the
+  // foes are written; everything else (the road, the torches, the stones) is
+  // rebuilt from the seed, which keeps the save small.
+  const SAVE_KEY = 'ue_run_v1';
+  const SAVE_VERSION = 1;
+  const SAVE_FIELDS = ['hp', 'maxHp', 'dmg', 'speed', 'reach', 'knock', 'arc', 'slow',
+                       'mist', 'blast', 'shield', 'shieldMax', 'dashPow', 'dashCdMax',
+                       'xp', 'level', 'obols', 'depth', 'kills', 'boons', 'takenIds'];
+  // A save every few seconds, plus one at the moment the app is hidden, means a
+  // run is at most a couple of blows old. Boon effects live in the saved numbers,
+  // so nothing has to be re-applied on the way back in.
+  const SAVE_EVERY = 3;
+
+  function saveRun() {
+    if (!state || !room) return;
+    try {
+      const data = { v: SAVE_VERSION, mode: mode === 'reward' ? 'reward' : 'playing',
+                     weapon: state.weapon.id,
+                     offer: state.offer || null, roomSeed: room.seed,
+                     door: room.door, entry: room.entry, roomT: room.t,
+                     px: state.player.x, py: state.player.y,
+                     cleared: !!room.cleared, enemies: room.enemies.map((e) => ({
+                       kind: e.kind, x: e.x, y: e.y, hp: e.hp, max: e.max, shoot: e.shoot,
+                       tier: e.tier, bossName: room.bossName, name: e.name,
+                     })) };
+      for (const k of SAVE_FIELDS) data[k] = state[k];
+      localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+    } catch (e) {}
+  }
+
+  function clearSave() {
+    try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
+    refreshResume();
+  }
+
+  // The menu's Continue button appears only when there is a run to come back to.
+  function refreshResume() {
+    const el = document.getElementById('resumeBtn');
+    if (el) el.hidden = !readSave();
+  }
+
+  function readSave() {
+    try {
+      const raw = localStorage.getItem(SAVE_KEY);
+      if (!raw) return null;
+      const data = JSON.parse(raw);
+      if (!data || data.v !== SAVE_VERSION || !data.roomSeed) return null;
+      if (!Array.isArray(data.enemies) || !WEAPONS.some((w) => w.id === data.weapon)) return null;
+      return data;
+    } catch (e) { return null; }
+  }
+
+  // Rebuild one foe from its saved form. Enemies the save does not know how to
+  // make are skipped rather than guessed at, so a bad save cannot invent a foe.
+  function reviveEnemy(e, depth) {
+    if (e.kind === 'boss') {
+      const tier = e.tier || Math.floor(depth / 5);
+      room.bossName = e.bossName || 'The Warden';
+      return { kind: 'boss', x: e.x, y: e.y, r: 38, hp: e.hp, max: e.max,
+               speed: 46 + depth * 1.4, dmg: 20 + depth * 1.6, color: '#e0a44e',
+               atk: 0, shoot: 1.6, charging: 0, tier };
+    }
+    const base = {
+      shade: { r: 14, hp: 26 + depth * 8, speed: 74 + depth * 3.4, dmg: 8 + depth, color: '#8f7bd8' },
+      wraith: { r: 16, hp: 40 + depth * 10, speed: 46 + depth * 2, dmg: 11 + depth, color: '#4fc3d9' },
+      brute: { r: 22, hp: 80 + depth * 20, speed: 44 + depth * 1.6, dmg: 17 + depth * 1.4, color: '#d96a4f' },
+    }[e.kind];
+    if (!base) return null;
+    const foe = Object.assign({ kind: e.kind, x: e.x, y: e.y, atk: 0 }, base);
+    foe.hp = e.hp; foe.max = e.max;
+    if (e.kind === 'wraith') foe.shoot = e.shoot == null ? rand(1.2, 2.4) : e.shoot;
+    return foe;
+  }
+
+  function resumeRun() {
+    const data = readSave();
+    if (!data) return false;
+    // The chamber's size depends on the screen, so it is recomputed here; the
+    // saved seed then rebuilds the dressing and road on that size.
+    cam.scale = clamp(Math.min(VW, VH) / 430, 1, 1.9);
+    state = { weapon: WEAPONS.find((w) => w.id === data.weapon) };
+    for (const k of SAVE_FIELDS) state[k] = data[k];
+    state.takenIds = data.takenIds || {};
+    state.boons = data.boons || [];
+    state.offer = data.offer || null;
+    state.dashCd = 0; state.dashT = 0; state.inv = 0; state.swingT = 0; state.swingCd = 0;
+
+    hide('menu'); hide('help'); hide('dead'); hide('cards');
+    document.getElementById('hud').classList.add('on');
+    document.body.classList.add('touching');
+    showTouch();
+
+    const size = chamberSize();
+    buildRoom(size.w, size.h, data.door, data.entry, data.roomSeed);
+    room.cleared = !!data.cleared;
+    room.enemies = data.enemies.map((e) => reviveEnemy(e, data.depth)).filter(Boolean);
+    room.t = data.roomT || 0;
+    state.player.x = data.px; state.player.y = data.py;
+    const viewW = VW / cam.scale, viewH = VH / cam.scale;
+    cam.x = clamp(state.player.x - viewW / 2, 0, Math.max(0, room.w - viewW));
+    cam.y = clamp(state.player.y - viewH / 2, 0, Math.max(0, room.h - viewH));
+
+    mode = 'playing';
+    if (state.offer && state.offer.length) openReward();
+    else toast('Depth ' + state.depth + ' — resumed');
+    return true;
   }
 
   // ---------------------------------------------------------------- render
@@ -2703,6 +2858,7 @@
     showTouch();
     newRun(chosenWeapon);
     mode = 'playing';
+    saveRun();
     toast('Depth 1 — ' + state.weapon.name + ' in hand');
     dbg('started', 1);
   }
@@ -2712,15 +2868,30 @@
 
   document.getElementById('playBtn').addEventListener('click', startRun);
   document.getElementById('againBtn').addEventListener('click', startRun);
+  document.getElementById('resumeBtn').addEventListener('click', () => { if (!resumeRun()) startRun(); });
   document.getElementById('helpBtn').addEventListener('click', () => { hide('menu'); show('help'); });
-  document.getElementById('helpBack').addEventListener('click', () => { hide('help'); show('menu'); });
+  document.getElementById('helpBack').addEventListener('click', () => { hide('help'); show('menu'); refreshResume(); });
   document.getElementById('corridorSkip').addEventListener('click', finishCorridor);
+  // Save on demand, for a player who wants to stop right now and be sure.
+  document.getElementById('saveBtn').addEventListener('click', () => {
+    saveRun();
+    toast('Run saved');
+  });
+
+  // Save the moment the app goes to the background or closes. On a phone this is
+  // the usual way a run ends, and it makes the autosave gap irrelevant.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && mode === 'playing') saveRun();
+  });
+  window.addEventListener('pagehide', () => { if (mode === 'playing') saveRun(); });
+  window.addEventListener('blur', () => { if (mode === 'playing') saveRun(); });
 
   try {
     const best = localStorage.getItem('ue_best');
     if (best) document.getElementById('bestLine').textContent = 'Best depth so far: ' + best;
-    document.getElementById('buildLine').textContent = 'art build 6';
+    document.getElementById('buildLine').textContent = 'art build 7';
   } catch (e) {}
+  refreshResume();
 
   // Debug snapshot for automated checks (see ?debug=1).
   if (DBG) {
@@ -2737,7 +2908,9 @@
 
   // Face south-east at boot so the canvas shows something before the first move.
   requestAnimationFrame((t) => { lastT = t; frame(t); });
-  window.__game = { get mode() { return mode; }, start: startRun, get state() { return state; }, get room() { return room; }, get cam() { return cam; },
+  window.__game = { get mode() { return mode; }, start: startRun, resume: resumeRun,
+                    hasSave: () => !!readSave(), save: saveRun, clearSave,
+                    get state() { return state; }, get room() { return room; }, get cam() { return cam; },
                     get corridor() { return corridor; }, skipCorridor: finishCorridor, weapons: WEAPONS,
                     get padActive() { return padActive; }, get shake() { return shake; },
                     get hitStop() { return hitStop; }, setPadActive,
