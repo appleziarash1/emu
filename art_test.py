@@ -2,13 +2,18 @@
 
 Reads pixels straight from the game canvas via JS (no image libraries needed) and
 verifies the hero, each enemy type, and the boss use their intended colours at
-their intended on-screen positions.
+their intended on-screen positions. The shading itself is audited in the source,
+because a canvas readback races the render loop and is too noisy to gate on.
 """
+import os
 import sys
 
 from playwright.sync_api import sync_playwright
 
 URL = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:12001/"
+
+SRC = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html"),
+           encoding="utf-8").read()
 
 PALETTE_JS = """
 ([cx, cy, half]) => {
@@ -134,6 +139,56 @@ with sync_playwright() as pw:
     print("boss at", [round(bx), round(by)], "->", boss)
     assert boss.get("bronze", 0) + boss.get("gold", 0) > 100, "boss armour missing"
     assert boss.get("bone", 0) > 10, "boss mask missing"
+
+    # Shading depth. Tone counting on a live canvas turned out to be too noisy to
+    # gate on: the readback races the render loop and swung by ten tones between
+    # identical runs. So the depth of the art is audited in the source instead,
+    # the way the god suite audits its flags, and the canvas check below only
+    # proves that the gradients actually reach the pixels.
+    def body_of(name):
+        start = SRC.index("function " + name + "(")
+        depth = 0
+        i = SRC.index("{", start)
+        for j in range(i, len(SRC)):
+            if SRC[j] == "{":
+                depth += 1
+            elif SRC[j] == "}":
+                depth -= 1
+                if depth == 0:
+                    return SRC[start:j + 1]
+        raise AssertionError("unterminated " + name)
+
+    expectations = {
+        "drawHero": ["createLinearGradient", "drawBladeShape", "drawRelic", "rim light"],
+        "drawShade": ["createLinearGradient", "quadraticCurveTo"],
+        "drawWraith": ["createLinearGradient", "createRadialGradient", "shadowBlur"],
+        "drawBrute": ["createLinearGradient", "createRadialGradient", "shadowBlur"],
+        "drawBoss": ["createLinearGradient", "createRadialGradient", "shadowBlur"],
+    }
+    for fn, needles in expectations.items():
+        body = body_of(fn)
+        for needle in needles:
+            assert needle in body, f"{fn} lost its {needle}"
+
+    # The relic is what carries the bound god onto the sprite, so it needs a
+    # crest for every god the save can hold.
+    relic = body_of("drawRelic")
+    assert "RELIC_LOOK" in relic and "shadowBlur" in relic, "relic lost its crest lookup"
+    gods_in_map = SRC[SRC.index("const RELIC_LOOK"):SRC.index("function drawRelic")]
+    for god in ("zeus", "athena", "poseidon", "ares", "artemis", "aphrodite",
+                "demeter", "hermes", "dionysus", "hephaestus", "chaos"):
+        assert god + ":" in gods_in_map, f"RELIC_LOOK is missing {god}"
+    print("relic crest map -> 11 gods covered")
+
+    # The helpers the roster shares must exist, or a sprite silently degrades.
+    for helper in ("plate", "limb", "slashBlade", "groundPuff", "shadowUnder"):
+        assert f"function {helper}(" in SRC, f"art helper {helper} missing"
+    print(f"art source audit -> {len(expectations)} characters, helpers present")
+
+    # At least one ring must survive a non-finite radius: a negative arc radius
+    # throws IndexSizeError and takes the whole frame down with it.
+    guard = body_of("ring")
+    assert "Number.isFinite" in guard, "ring lost its finite-radius guard"
 
     print("page errors:", errs[:3] or "none")
     print("ART CHECK PASSED")

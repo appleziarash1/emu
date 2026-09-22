@@ -158,6 +158,31 @@ Single-file canvas roguelike PWA. No build step: `index.html` is the whole game,
   so only they may use the fallback. `god_test.py` audits both loops against the
   pushed kinds, so a new kind must be added to both or the suite fails.
 
+## Character art
+- Every body on screen is built from the shared kit at the top of the draw
+  section: `limb`, `ellipse`, `ring`, `plate`, `eye`, `slashBlade`, `groundPuff`
+  and `shadowUnder`. Add a new look by composing those, not by hand-rolling
+  `ctx.arc`/`ctx.fill` again — the light direction, the rim and the contact
+  shadow only stay consistent across the roster if they all come from one place.
+- Sprites are drawn facing **local +x**. `drawHero` and the weapon sprites use
+  `ctx.scale(f, 1)` with `f` from `faceX` so a left-facing hero is a mirror, not
+  a second set of coordinates. Anything with handedness must go inside that flip.
+- The hero wears the bound god as a crest (`drawRelic`), keyed by `godId` in
+  `RELIC_LOOK`. A new god needs an entry there too, or the hero falls back to
+  the default bolt and the run stops showing which god it belongs to.
+- `ring` refuses a non-finite or non-positive radius. A negative `ctx.arc`
+  radius throws `IndexSizeError`, which kills the entire frame — the enemy
+  telegraphs build radii from sines of `t`, so a NaN reaching one would blank
+  the screen rather than skip a decoration. Keep that guard.
+- `drawHero` takes `t` (the room clock) and must not read wall time. The relic's
+  pulse used `performance.now()` at first, which made a paused frame still move
+  and made the art tests non-reproducible.
+- `art_test.py` reads real canvas pixels for the palettes, then audits the
+  shading in the source (`createLinearGradient`, `shadowBlur`, the helper list,
+  the relic map, the ring guard). Tone counting on the live canvas was dropped:
+  the readback races the render loop and swung by ten tones between identical
+  runs, so it could not gate a commit.
+
 ## Running the tests
 Playwright is not installed by default: `pip install playwright` then
 `python3 -m playwright install chromium`. Run the suites one at a time — several
