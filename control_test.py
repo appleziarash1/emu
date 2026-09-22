@@ -134,6 +134,91 @@ with sync_playwright() as pw:
     check("arms have different reach", len({r["reach"] for r in ranges}) == 5,
           [r["reach"] for r in ranges])
 
+    # 10. A connected controller replaces the on-screen controls instead of
+    #     layering over them. Chromium reports no pad here, so the state is
+    #     driven directly through the same entry point the gamepad loop uses.
+    touchShown = page.evaluate("""() => {
+      const s = document.getElementById('stick');
+      const t = document.getElementById('touchZone');
+      return { stick: getComputedStyle(s).display !== 'none',
+               zone: getComputedStyle(t).display !== 'none',
+               hit: getComputedStyle(document.getElementById('btnHit')).display !== 'none' };
+    }""")
+    check("touch controls are shown while playing by touch",
+          touchShown["stick"] and touchShown["zone"] and touchShown["hit"], touchShown)
+
+    page.evaluate("() => window.__game.setPadActive(true)")
+    page.wait_for_timeout(120)
+    padOn = page.evaluate("""() => {
+      const s = document.getElementById('stick');
+      const t = document.getElementById('touchZone');
+      return { pad: window.__game.padActive,
+               stick: getComputedStyle(s).display !== 'none',
+               zone: getComputedStyle(t).display !== 'none',
+               hit: getComputedStyle(document.getElementById('btnHit')).display !== 'none',
+               dash: getComputedStyle(document.getElementById('btnDash')).display !== 'none' };
+    }""")
+    check("connecting a controller hides the virtual joystick",
+          padOn["pad"] and not padOn["stick"] and not padOn["zone"], padOn)
+    check("connecting a controller hides the on-screen buttons",
+          not padOn["hit"] and not padOn["dash"], padOn)
+
+    page.evaluate("() => window.__game.setPadActive(false)")
+    page.wait_for_timeout(120)
+    padOff = page.evaluate("""() => {
+      const t = document.getElementById('touchZone');
+      return { pad: window.__game.padActive,
+               stick: getComputedStyle(document.getElementById('stick')).display !== 'none',
+               zone: getComputedStyle(t).display !== 'none' };
+    }""")
+    check("unplugging the controller brings the touch controls back",
+          not padOff["pad"] and padOff["stick"] and padOff["zone"], padOff)
+
+    # 11. A landed blow has to read as impact: the frame is held, the camera is
+    #     kicked, and the wound throws a ring and sparks.
+    feel = page.evaluate("""() => {
+      const g = window.__game, r = g.room, p = g.state.player;
+      const e = r.enemies[0];
+      const before = r.projectiles.filter((x) => x.kind === 'impact' || x.kind === 'debris').length;
+      e.x = p.x + 20; e.y = p.y;          // put a foe inside the swing
+      g.hurtEnemy(e, 5, { x: 1, y: 0 });  // a light, non-lethal blow
+      const after = r.projectiles.filter((x) => x.kind === 'impact' || x.kind === 'debris').length;
+      return { added: after - before,
+               impact: r.projectiles.some((x) => x.kind === 'impact'),
+               debris: r.projectiles.filter((x) => x.kind === 'debris').length,
+               stop: g.hitStop, shakeMag: g.shake.mag };
+    }""")
+    check("a blow throws an impact ring", feel["impact"], feel)
+    check("a blow throws sparks", feel["debris"] >= 4, feel)
+    check("a blow holds the frame briefly", feel["stop"] > 0, round(feel["stop"], 3))
+    check("a blow kicks the camera", feel["shakeMag"] > 0, feel["shakeMag"])
+
+    page.wait_for_timeout(400)
+    settled = page.evaluate("""() => {
+      const g = window.__game;
+      return { mag: g.shake.mag, x: g.shake.x, y: g.shake.y,
+               impacts: g.room.projectiles.filter((x) => x.kind === 'impact').length };
+    }""")
+    check("the camera settles after the blow",
+          settled["mag"] == 0 and settled["x"] == 0 and settled["y"] == 0, settled)
+    check("the impact ring fades away", settled["impacts"] == 0, settled["impacts"])
+
+    # 12. Cosmetic hit effects must never keep a cleared chamber locked. Any
+    #     projectile left over from the aiming checks is dropped first, so only
+    #     the two cosmetic kinds are in flight when the room empties.
+    locked = page.evaluate("""() => {
+      const g = window.__game, r = g.room;
+      r.cleared = false;
+      r.enemies.length = 0;
+      r.projectiles.length = 0;
+      r.projectiles.push({ x: 10, y: 10, t: 0.3, kind: 'impact' });
+      r.projectiles.push({ x: 10, y: 10, t: 0.3, kind: 'debris', vx: 0, vy: 0, r: 2 });
+      return true;
+    }""")
+    page.wait_for_timeout(500)
+    cleared = page.evaluate("() => ({ cleared: window.__game.room.cleared, mode: window.__game.mode })")
+    check("hit effects do not block the gate from opening", cleared["cleared"], cleared)
+
     print("page errors:", errors[:5] or "none")
     browser.close()
 

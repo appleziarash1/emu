@@ -52,7 +52,7 @@ for name in ("index.html", "sw.js", "manifest.webmanifest", "serve.js"):
 
 # v1 of the game
 v1 = open(os.path.join(work, "index.html")).read()
-open(os.path.join(work, "index.html"), "w").write(v1.replace("art build 3", "art build 1"))
+open(os.path.join(work, "index.html"), "w").write(v1.replace("art build 5", "art build 1"))
 
 httpd = serve(work)
 url = f"http://127.0.0.1:{PORT}/"
@@ -68,7 +68,7 @@ with sync_playwright() as pw:
 
     # The site is updated while the phone is away.
     open(os.path.join(work, "index.html"), "w").write(
-        v1.replace("art build 3", "art build 99"))
+        v1.replace("art build 5", "art build 99"))
 
     page.reload(wait_until="load")
     page.wait_for_timeout(1800)

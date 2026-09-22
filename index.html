@@ -64,6 +64,15 @@
           background: #ffffff17; border: 1px solid #ffffff26; white-space: nowrap; }
   .hud-bottom { position: absolute; bottom: calc(env(safe-area-inset-bottom) + 6px); left: 10px; right: 10px;
                 display: flex; gap: 10px; justify-content: space-between; font-size: 12px; color: #cbbde6; }
+  /* Minimap: in a chamber several screens wide the gate is easy to lose, so the
+     road and the gate are shown in the corner. */
+  #map { position: absolute; right: 10px; top: calc(env(safe-area-inset-top) + 46px); z-index: 12;
+         width: 84px; border-radius: 12px; overflow: hidden; background: #0d0719cc;
+         border: 1px solid #ffffff26; pointer-events: none; display: none; }
+  #hud.on #map { display: block; }
+  #map canvas { display: block; width: 100%; height: auto; }
+  #map .mapLabel { font-size: 9px; letter-spacing: .08em; text-transform: uppercase;
+                   text-align: center; padding: 2px 0 3px; color: #a794c9; }
 
   #stick { position: absolute; z-index: 11; width: 148px; height: 148px; border-radius: 50%;
            border: 2px solid #ffffff2b; background: #ffffff0f; display: none;
@@ -83,6 +92,10 @@
   #touchZone { position: absolute; z-index: 10; left: 0; top: 0; width: 58%; height: 100%;
                touch-action: none; display: none; }
   #touchZone.on { display: block; }
+
+  /* A connected controller takes over: the on-screen stick and buttons step
+     aside so the screen is not cluttered by controls nobody is touching. */
+  body.pad #stick, body.pad #touchZone, body.pad .tbtn { display: none; }
 
   .tbtn { position: absolute; z-index: 12; border-radius: 50%; border: 2px solid #ffffff33;
           background: #ffffff1a; color: #fff; font-weight: 800; display: none;
@@ -145,6 +158,10 @@
       <span id="boonList">no boons</span>
       <span id="goldChip">0 obols</span>
     </div>
+    <div id="map">
+      <canvas id="mapCanvas" width="168" height="168"></canvas>
+      <div class="mapLabel">gate</div>
+    </div>
   </div>
 
   <div id="touchZone"></div>
@@ -204,8 +221,8 @@
       • STRIKE swings the weapon you are carrying. It also snaps onto a nearby foe,
         so you do not have to aim perfectly.<br />
       • DASH makes you briefly untouchable — dash through enemies to escape.<br />
-      • Clear every shade in a chamber, then pick a god's boon, or trade your arm
-        for a different weapon.<br />
+      • Clear every shade in a chamber, then pick a god's boon. The arm you chose
+        at the start stays with you all the way down.<br />
       • Boons stack. Build a strong run, then beat the Warden.<br />
       • A physical controller or keyboard also works.
     </p>
@@ -380,11 +397,30 @@
     return { x: x / m, y: y / m, hit: !!keys['j'], dash: !!keys[' '] || !!keys['k'] };
   }
   let padHit = false, padDash = false;
-  window.addEventListener('gamepadconnected', (e) => toast('Controller connected'));
+  let padActive = false;
+
+  // On-screen controls and a physical controller are alternatives, not layers:
+  // once a pad is steering the hero the stick and buttons are hidden, and they
+  // come back if it is unplugged.
+  function setPadActive(on) {
+    if (padActive === on) return;
+    padActive = on;
+    document.body.classList.toggle('pad', on);
+    toast(on ? 'Controller ready — touch pad hidden' : 'Controller off — touch pad back');
+  }
+  window.addEventListener('gamepadconnected', () => setPadActive(true));
+  window.addEventListener('gamepaddisconnected', () => {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    if (![...pads].some(Boolean)) setPadActive(false);
+  });
+
   function readPad() {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (const p of pads) {
       if (!p) continue;
+      // Chrome only reports a pad after a button press, so the first frame that
+      // sees one is also the moment the on-screen controls should go away.
+      setPadActive(true);
       let x = p.axes[0] || 0, y = p.axes[1] || 0;
       if (Math.abs(x) < 0.18) x = 0;
       if (Math.abs(y) < 0.18) y = 0;
@@ -462,7 +498,11 @@
   let mode = 'menu';     // menu | playing | reward | dead | paused
   let lastT = 0;
   let room = null;
-  const cam = { x: 0, y: 0 };
+  const cam = { x: 0, y: 0, scale: 1 };
+
+  // World units per CSS pixel. Tied to the short edge of the screen so a phone
+  // and a desktop see the same amount of the chamber.
+  function viewScale() { return clamp(Math.min(VW, VH) / 430, 1, 1.9); }
 
   function newRun(weaponId) {
     const weapon = WEAPONS.find((w) => w.id === weaponId) || WEAPONS[0];
@@ -485,7 +525,9 @@
   function makeRoad(a, b, w, h) {
     const pad = 70;
     const pts = [{ x: a.x, y: a.y }];
-    const bends = randi(2, 3);
+    // the longer the hall, the more the road is allowed to wander
+    const span = Math.hypot(b.x - a.x, b.y - a.y);
+    const bends = clamp(Math.round(span / 190), 2, 5);
     for (let i = 1; i <= bends; i++) {
       const k = i / (bends + 1);
       // Alternate the offset side so the road snakes instead of drifting.
@@ -521,10 +563,30 @@
     return best;
   }
 
+  // ---------------------------------------------------------------- chambers
+  // A chamber is deliberately larger than the screen: the view pans with the
+  // hero, which is what makes the descent feel like travelling through a place
+  // rather than fighting in a box. The area grows with depth; the aspect ratio is
+  // held near a hall's proportions, because on a tall phone screen an
+  // unconstrained scale would produce a corridor a thousand units long.
+  const CHAMBER = { base: 1.7, perDepth: 0.05, cap: 2.5, aspectMin: 0.85, aspectMax: 1.5 };
+
+  function chamberSize() {
+    const grow = Math.min(CHAMBER.cap, CHAMBER.base + state.depth * CHAMBER.perDepth);
+    const viewW = VW / cam.scale, viewH = VH / cam.scale;
+    const area = viewW * viewH * grow * grow;
+    const aspect = clamp(viewW / viewH, CHAMBER.aspectMin, CHAMBER.aspectMax);
+    return {
+      w: Math.round(Math.sqrt(area * aspect)),
+      h: Math.round(Math.sqrt(area / aspect)),
+    };
+  }
+
   function newRoom() {
     const depth = state.depth;
-    const w = Math.round(clamp(VW - 24, 320, 760));
-    const h = Math.round(clamp(VH - 190, 320, 620));
+    cam.scale = clamp(Math.min(VW, VH) / 430, 1, 1.9);
+    const size = chamberSize();
+    const w = size.w, h = size.h;
     room = { w, h, enemies: [], projectiles: [], t: 0, mist: [], floaters: [], cleared: false, isBoss: depth % 5 === 0 };
     state.player = { x: w / 2, y: h / 2, hx: 0, hy: 0, r: 15, kx: 0, ky: 0 };
     // place the exit door on a random wall
@@ -543,35 +605,74 @@
     };
     room.entry = entry;
     room.road = makeRoad(entry, { x: room.door.x, y: room.door.y }, w, h);
+    // the wall inset: pillars, torches and props keep clear of it
+    room.inset = 46;
 
     // decorative dressing, decided once per room so it never flickers
     room.torches = [];
     room.pillars = [];
     room.cracks = [];
     room.vases = [];
-    const torchSpots = [
-      { x: 26, y: 30 }, { x: w - 26, y: 30 }, { x: 26, y: h - 30 }, { x: w - 26, y: h - 30 },
-    ];
-    for (const spot of torchSpots) {
-      if (Math.random() < 0.5 && Math.hypot(spot.x - room.door.x, spot.y - room.door.y) > 80) {
-        room.torches.push({ x: spot.x, y: spot.y, seed: rand(0, 9), light: rand(95, 140) });
+    room.bones = [];
+    room.rubble = [];
+    room.moss = [];
+
+    // torches run along the walls, spaced to the chamber's size
+    const perSide = clamp(Math.round(Math.min(w, h) / 190), 2, 4);
+    for (let i = 1; i <= perSide; i++) {
+      const k = i / (perSide + 1);
+      for (const spot of [
+        { x: w * k, y: 26 }, { x: w * k, y: h - 26 },
+        { x: 26, y: h * k }, { x: w - 26, y: h * k },
+      ]) {
+        if (Math.hypot(spot.x - room.door.x, spot.y - room.door.y) < 90) continue;
+        if (roadDistance(spot.x, spot.y) < 52) continue;
+        if (Math.random() < 0.45) continue;
+        room.torches.push({ x: spot.x, y: spot.y, seed: rand(0, 9), light: rand(95, 150) });
       }
     }
     if (room.torches.length === 0) room.torches.push({ x: 26, y: 30, seed: rand(0, 9), light: 120 });
 
-    for (let i = 0; i < randi(1, 3); i++) {
-      const px = rand(w * 0.2, w * 0.8), py = rand(h * 0.2, h * 0.8);
-      if (Math.hypot(px - w / 2, py - h / 2) < 120) continue;
-      if (roadDistance(px, py) < 62) continue;   // keep the walking line clear
-      room.pillars.push({ x: px, y: py, w: rand(26, 36), h: rand(52, 78), seed: rand(0, 9) });
+    // pillars in loose rows, which is what makes a large hall read as architecture
+    const rows = clamp(Math.round(h / 260), 1, 3);
+    const cols = clamp(Math.round(w / 300), 1, 3);
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const px = w * ((c + 0.5) / cols) + rand(-40, 40);
+        const py = h * ((r + 0.5) / rows) + rand(-40, 40);
+        if (Math.hypot(px - w / 2, py - h / 2) < 130) continue;
+        if (roadDistance(px, py) < 74) continue;   // keep the walking line clear
+        if (Math.hypot(px - room.door.x, py - room.door.y) < 110) continue;
+        room.pillars.push({ x: px, y: py, w: rand(28, 40), h: rand(58, 92), seed: rand(0, 9) });
+      }
     }
-    for (let i = 0; i < randi(3, 6); i++) {
+
+    for (let i = 0; i < randi(6, 12); i++) {
       room.cracks.push({ x: rand(40, w - 40), y: rand(40, h - 40),
                          a: rand(-30, 30), b: rand(-30, 30), c: rand(-22, 22), d: rand(-22, 22) });
     }
-    for (let i = 0; i < randi(2, 5); i++) {
+    // rubble and bone settle near the walls and away from the road
+    for (let i = 0; i < randi(10, 20); i++) {
+      const rx = rand(30, w - 30), ry = rand(30, h - 30);
+      if (roadDistance(rx, ry) < 40) continue;
+      room.rubble.push({ x: rx, y: ry, r: rand(2.5, 6), seed: rand(0, 9) });
+    }
+    for (let i = 0; i < randi(4, 10); i++) {
+      const bx = rand(30, w - 30), by = rand(30, h - 30);
+      if (roadDistance(bx, by) < 46) continue;
+      room.bones.push({ x: bx, y: by, a: rand(0, Math.PI), l: rand(9, 16) });
+    }
+    // damp moss creeps in from the corners
+    for (let i = 0; i < randi(5, 12); i++) {
+      const mx = rand(0, w), my = rand(0, h);
+      const edge = Math.min(mx, my, w - mx, h - my);
+      if (edge > 120 || roadDistance(mx, my) < 50) continue;
+      room.moss.push({ x: mx, y: my, r: rand(18, 42), seed: rand(0, 9) });
+    }
+    for (let i = 0; i < randi(4, 9); i++) {
       const vx = rand(34, w - 34), vy = rand(34, h - 34);
       if (Math.hypot(vx - w / 2, vy - h / 2) < 70) continue;
+      if (roadDistance(vx, vy) < 44) continue;
       room.vases.push({ x: vx, y: vy, r: rand(8, 12), hp: 1 });
     }
 
@@ -584,7 +685,9 @@
     if (room.isBoss) {
       spawnBoss(depth);
     } else {
-      const n = clamp(3 + Math.floor(depth * 0.9), 3, 11);
+      // a larger hall holds more shades, or it would feel empty
+      const area = (room.w * room.h) / (900 * 620);
+      const n = clamp(Math.round((3 + depth * 0.9) * clamp(area, 1, 2.2)), 3, 22);
       for (let i = 0; i < n; i++) spawnEnemy(depth);
     }
   }
@@ -621,7 +724,7 @@
     room.bossName = ['The Warden of the Gate', 'Cerberus Born Again', 'The Bone Tyrant',
                      'The Iron Judge', 'Kronos Unbound'][Math.min(4, tier - 1)] || 'The Warden';
     room.enemies.push({
-      kind: 'boss', x: room.w / 2, y: 90, r: 38,
+      kind: 'boss', x: room.w / 2, y: room.inset + 70, r: 38,
       hp: 340 + depth * 95, max: 340 + depth * 95,
       speed: 46 + depth * 1.4, dmg: 20 + depth * 1.6, color: '#e0a44e',
       atk: 0, shoot: 1.6, charging: 0, tier,
@@ -717,7 +820,40 @@
       e.kx = (push.x / d) * pushPow;
       e.ky = (push.y / d) * pushPow;
     }
+    hitFeel(e, amount, push);
     if (e.hp <= 0) killEnemy(e);
+  }
+
+  // ---------------------------------------------------------------- hit feel
+  // A hit should land with weight, not just subtract a number. Three things sell
+  // it: the world stops for a moment, the camera is kicked, and an impact ring
+  // and sparks fly out of the wound. Heavier strikes and kills hit harder.
+  const shake = { x: 0, y: 0, mag: 0, t: 0 };
+  let hitStop = 0;
+
+  function kick(mag) {
+    shake.mag = Math.max(shake.mag, mag);
+    shake.t = 0.22;
+  }
+
+  function hitFeel(e, amount, push) {
+    const heavy = state.weapon.heavy;
+    const heavyHit = heavy || amount >= e.max * 0.45;
+    hitStop = Math.max(hitStop, heavyHit ? 0.075 : 0.045);
+
+    const a = push ? Math.atan2(push.y, push.x) : rand(0, TAU);
+    room.projectiles.push({ x: e.x, y: e.y, a, t: heavyHit ? 0.26 : 0.18,
+                            kind: 'impact', r: e.r + (heavyHit ? 18 : 8), big: heavyHit });
+
+    const sparks = heavyHit ? 9 : 5;
+    for (let i = 0; i < sparks; i++) {
+      const sa = a + rand(-0.9, 0.9);
+      const sp = rand(90, heavyHit ? 340 : 240);
+      room.projectiles.push({ x: e.x, y: e.y, vx: Math.cos(sa) * sp, vy: Math.sin(sa) * sp,
+                              r: 2, kind: 'debris', t: rand(0.18, 0.4),
+                              color: e.kind === 'brute' ? '#ffb07a' : '#ffe9a8' });
+    }
+    kick(heavyHit ? 9 : 6);
   }
 
   function killEnemy(e) {
@@ -962,8 +1098,10 @@
     p.x += p.kx * dt; p.y += p.ky * dt;
     p.kx *= Math.pow(0.001, dt); p.ky *= Math.pow(0.001, dt);
 
-    p.x = clamp(p.x, p.r, room.w - p.r);
-    p.y = clamp(p.y, p.r, room.h - p.r);
+    // the walls are solid: the hero is held inside the inner edge
+    const in0 = (room.inset || 46) + p.r * 0.35;
+    p.x = clamp(p.x, in0, room.w - in0);
+    p.y = clamp(p.y, in0, room.h - in0);
 
     // timers
     state.inv = Math.max(0, state.inv - dt);
@@ -1011,7 +1149,8 @@
         if (e.charging > 0) {
           e.charging -= dt;
           e.x += e.cdir.x * 430 * dt; e.y += e.cdir.y * 430 * dt;
-          e.x = clamp(e.x, e.r, room.w - e.r); e.y = clamp(e.y, e.r, room.h - e.r);
+          const wall = (room.inset || 46) + e.r * 0.35;
+          e.x = clamp(e.x, wall, room.w - wall); e.y = clamp(e.y, wall, room.h - wall);
           if (touching) damagePlayer(e.dmg * 1.2);
         } else if (touching) damagePlayer(e.dmg);
       } else if (e.kind === 'wraith') {
@@ -1034,14 +1173,22 @@
       e.x += (e.kx || 0) * dt; e.y += (e.ky || 0) * dt;
       e.kx = (e.kx || 0) * Math.pow(0.0005, dt);
       e.ky = (e.ky || 0) * Math.pow(0.0005, dt);
-      e.x = clamp(e.x, e.r, room.w - e.r);
-      e.y = clamp(e.y, e.r, room.h - e.r);
+      const wall = (room.inset || 46) + e.r * 0.35;
+      e.x = clamp(e.x, wall, room.w - wall);
+      e.y = clamp(e.y, wall, room.h - wall);
     }
     room.enemies = room.enemies.filter((e) => !e.dead);
 
     // projectiles
     for (const pr of room.projectiles) {
-      if (pr.kind === 'spark' || pr.kind === 'blast') { pr.t -= dt; continue; }
+      // impact rings and debris only age; they are drawn, not simulated
+      if (pr.kind === 'spark' || pr.kind === 'blast' || pr.kind === 'impact') { pr.t -= dt; continue; }
+      if (pr.kind === 'debris') {
+        pr.t -= dt;
+        pr.x += pr.vx * dt; pr.y += pr.vy * dt;
+        pr.vx *= Math.pow(0.02, dt); pr.vy *= Math.pow(0.02, dt);
+        continue;
+      }
       pr.t -= dt;
       pr.x += pr.vx * dt; pr.y += pr.vy * dt;
       if (pr.x < 0 || pr.y < 0 || pr.x > room.w || pr.y > room.h) pr.t = 0;
@@ -1093,7 +1240,9 @@
     for (const e of room.enemies) e.hurt = Math.max(0, (e.hurt || 0) - dt);
 
     // pickups for obols are automatic; door unlocks when the room is clear
-    if (!room.cleared && room.enemies.length === 0 && room.projectiles.every((x) => x.kind === 'spark' || x.kind === 'blast')) {
+    if (!room.cleared && room.enemies.length === 0 &&
+        room.projectiles.every((x) => x.kind === 'spark' || x.kind === 'blast' ||
+                                    x.kind === 'impact' || x.kind === 'debris')) {
       room.cleared = true;
       if (room.isBoss) { toast('The gate stands open'); }
       else { openReward(); }
@@ -1108,10 +1257,25 @@
       }
     }
 
-    cam.scale = clamp(Math.min(VW / room.w, VH / room.h), 1, 3);
+    cam.scale = viewScale();
     const viewW = VW / cam.scale, viewH = VH / cam.scale;
-    cam.x = clamp(p.x - viewW / 2, 0, Math.max(0, room.w - viewW));
-    cam.y = clamp(p.y - viewH / 2, 0, Math.max(0, room.h - viewH));
+    // Follow the hero with a little look-ahead in the direction of travel, eased
+    // so the view glides instead of snapping when a dash changes direction.
+    const lead = 0.18;
+    const wantX = clamp(p.x + p.hx * viewW * lead - viewW / 2, 0, Math.max(0, room.w - viewW));
+    const wantY = clamp(p.y + p.hy * viewH * lead - viewH / 2, 0, Math.max(0, room.h - viewH));
+    const ease = Math.min(1, dt * 7);
+    cam.x += (wantX - cam.x) * ease;
+    cam.y += (wantY - cam.y) * ease;
+
+    // camera kick from a landed blow, decaying over a fifth of a second
+    if (shake.t > 0) {
+      shake.t = Math.max(0, shake.t - dt);
+      const k = shake.t / 0.22;
+      shake.x = rand(-1, 1) * shake.mag * k;
+      shake.y = rand(-1, 1) * shake.mag * k;
+      if (shake.t === 0) { shake.mag = 0; shake.x = 0; shake.y = 0; }
+    }
     updateHud();
   }
 
@@ -1127,8 +1291,6 @@
   }
 
   // ---------------------------------------------------------------- reward
-  // Each boon card is shown next to one arm the hero can trade for, so a run can
-  // change character partway through instead of being locked to the first pick.
   const WEAPON_GLYPH = { xiphos: '🗡', spear: '🔱', daggers: '⚔️', hammer: '🔨', bow: '🏹' };
 
   function renderWeaponPicker() {
@@ -1167,26 +1329,9 @@
       body.appendChild(el);
     }
 
-    // One trade card per arm, shown only when it is an actual change.
-    for (const w of WEAPONS) {
-      if (w.id === state.weapon.id) continue;
-      const el = document.createElement('button');
-      el.className = 'card';
-      el.type = 'button';
-      el.innerHTML = '<em>CHANGE YOUR ARM</em><b>' + WEAPON_GLYPH[w.id] + ' ' + w.name +
-        '</b><span>' + w.blurb + '</span>';
-      el.addEventListener('click', () => { swapWeapon(w); });
-      body.appendChild(el);
-    }
+    // Only boons are offered here. The arm is chosen before the run and stays
+    // with the hero for the whole descent.
     show('cards');
-  }
-
-  function swapWeapon(w) {
-    state.weapon = w;
-    state.swingCd = 0; state.swingT = 0;
-    hide('cards');
-    mode = 'playing';
-    toast('Now carrying the ' + w.name);
   }
 
   function takeBoon(b) {
@@ -1207,10 +1352,11 @@
     const s = cam.scale || 1;
     ctx.save();
     ctx.scale(s, s);
-    ctx.translate(-cam.x, -cam.y);
+    ctx.translate(-cam.x + shake.x, -cam.y + shake.y);
 
     const t = room.t;
     drawFloor(t);
+    drawWalls(t);
     drawRoad(t);
     drawGate(room.cleared, t);
     drawTorches(t);
@@ -1242,9 +1388,11 @@
       ctx.globalAlpha = 1;
     }
     ctx.textAlign = 'left';
-
-    drawVignette();
     ctx.restore();
+
+    drawDust(t / 1000);
+    drawMinimap();
+    drawVignette();
   }
 
   // ------------------------------------------------------------------- art
@@ -1258,21 +1406,37 @@
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, room.w, room.h);
 
-    // flagstones
-    const T = 64;
+    // flagstones: two interleaved grids of slightly different tone, so the floor
+    // reads as laid stone rather than a checkerboard
+    const T = 68;
     for (let y = 0; y < room.h; y += T) {
       for (let x = 0; x < room.w; x += T) {
         const off = (Math.floor(y / T) % 2) * (T / 2);
         const px0 = x + off, py0 = y;
         const jitter = ((px0 * 13 + py0 * 7) % 17) / 17;
-        if (jitter < 0.12) continue;
-        ctx.fillStyle = jitter < 0.55 ? '#1a0f2b' : '#150c24';
-        ctx.fillRect(px0 + 1.5, py0 + 1.5, T - 3, T - 3);
-        ctx.strokeStyle = '#00000055';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(px0 + 1.5, py0 + 1.5, T - 3, T - 3);
+        if (jitter < 0.1) continue;
+        const shade = jitter < 0.4 ? '#1c112d' : jitter < 0.72 ? '#170e26' : '#130a20';
+        ctx.fillStyle = shade;
+        ctx.fillRect(px0 + 2, py0 + 2, T - 4, T - 4);
+        // a lit top-left edge and a dark bottom-right one gives the stone depth
+        ctx.fillStyle = '#ffffff07';
+        ctx.fillRect(px0 + 2, py0 + 2, T - 4, 2);
+        ctx.fillRect(px0 + 2, py0 + 2, 2, T - 4);
+        ctx.fillStyle = '#00000055';
+        ctx.fillRect(px0 + 2, py0 + T - 4, T - 4, 2);
+        ctx.fillRect(px0 + T - 4, py0 + 2, 2, T - 4);
       }
     }
+
+    // damp moss creeping in from the edges
+    for (const m of room.moss || []) {
+      const mg = ctx.createRadialGradient(m.x, m.y, 1, m.x, m.y, m.r);
+      mg.addColorStop(0, 'rgba(56,92,58,0.30)');
+      mg.addColorStop(1, 'rgba(40,70,44,0)');
+      ctx.fillStyle = mg;
+      ctx.beginPath(); ctx.arc(m.x, m.y, m.r, 0, TAU); ctx.fill();
+    }
+
     // creeping cracks
     ctx.strokeStyle = '#00000066';
     ctx.lineWidth = 2;
@@ -1284,12 +1448,148 @@
       ctx.stroke();
     }
 
+    // rubble and old bone, settled where nobody walks
+    for (const rb of room.rubble || []) {
+      ctx.fillStyle = '#2b2138';
+      ctx.beginPath(); ctx.ellipse(rb.x, rb.y + 1, rb.r, rb.r * 0.7, 0, 0, TAU); ctx.fill();
+      ctx.fillStyle = '#3c2f4d';
+      ctx.beginPath(); ctx.arc(rb.x - rb.r * 0.3, rb.y - rb.r * 0.4, rb.r * 0.5, 0, TAU); ctx.fill();
+    }
+    for (const bn of room.bones || []) {
+      ctx.save();
+      ctx.translate(bn.x, bn.y);
+      ctx.rotate(bn.a);
+      ctx.strokeStyle = '#b9a98c66';
+      ctx.lineWidth = 2.4;
+      ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(-bn.l / 2, 0); ctx.lineTo(bn.l / 2, 0); ctx.stroke();
+      ctx.fillStyle = '#b9a98c66';
+      for (const e of [-1, 1]) { ctx.beginPath(); ctx.arc(e * bn.l / 2, 0, 2, 0, TAU); ctx.fill(); }
+      ctx.restore();
+    }
+
     // sealing runes around the gate ring
     ctx.strokeStyle = '#6a4bd433';
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.arc(room.w / 2, room.h / 2, 46, 0, TAU);
     ctx.stroke();
+  }
+
+  // The wall that rings the chamber. Drawn after the floor and before anything
+  // standing, so props are visually inside the room.
+  function drawWalls(t) {
+    const inset = room.inset || 46;
+    const w = room.w, h = room.h;
+
+    // the wall band itself: lit near the top edge, falling into shadow at the
+    // bottom, which is what sells a floor plane receding away from the viewer
+    ctx.fillStyle = '#0a0514';
+    ctx.fillRect(0, 0, w, inset);
+    ctx.fillRect(0, h - inset, w, inset);
+    ctx.fillRect(0, 0, inset, h);
+    ctx.fillRect(w - inset, 0, inset, h);
+
+    // a shallow inner lip so the wall has thickness
+    const lip = ctx.createLinearGradient(0, 0, 0, inset);
+    lip.addColorStop(0, '#241634');
+    lip.addColorStop(1, '#0d0719');
+    ctx.fillStyle = lip;
+    ctx.fillRect(0, 0, w, 10);
+    ctx.fillRect(0, h - 10, w, 10);
+
+    // brick courses along the band
+    ctx.strokeStyle = '#00000088';
+    ctx.lineWidth = 1;
+    const brickW = 54, brickH = 22;
+    for (const band of [{ y: 0, dir: 1 }, { y: h - inset, dir: 1 }]) {
+      for (let row = 0; row < Math.ceil(inset / brickH); row++) {
+        const y = band.y + row * brickH;
+        const off = (row % 2) * (brickW / 2);
+        for (let x = -brickW; x < w + brickW; x += brickW) {
+          ctx.strokeRect(x + off, y, brickW, brickH);
+        }
+      }
+    }
+    for (const band of [{ x: 0 }, { x: w - inset }]) {
+      for (let col = 0; col < Math.ceil(inset / brickW); col++) {
+        const x = band.x + col * brickW;
+        const off = (col % 2) * (brickH / 2);
+        for (let y = -brickH; y < h + brickH; y += brickH) {
+          ctx.strokeRect(x, y + off, brickW, brickH);
+        }
+      }
+    }
+
+    // the inner edge, drawn as a hard line so the playfield boundary is legible
+    ctx.strokeStyle = '#3b2a54';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(inset, inset, w - inset * 2, h - inset * 2);
+  }
+
+  // The minimap. In a hall several screens across the gate is easy to lose, so the
+  // chamber outline, the road, the gate and the hero are shown in the corner.
+  const mapCanvas = document.getElementById('mapCanvas');
+  const mapCtx = mapCanvas.getContext('2d');
+  function drawMinimap() {
+    const W = mapCanvas.width, H = mapCanvas.height;
+    const pad = 10;
+    const s = Math.min((W - pad * 2) / room.w, (H - pad * 2) / room.h);
+    const ox = (W - room.w * s) / 2, oy = (H - room.h * s) / 2;
+    const X = (x) => ox + x * s, Y = (y) => oy + y * s;
+
+    mapCtx.clearRect(0, 0, W, H);
+    mapCtx.fillStyle = '#0d0719';
+    mapCtx.fillRect(0, 0, W, H);
+    mapCtx.strokeStyle = '#3b2a54';
+    mapCtx.lineWidth = 2;
+    mapCtx.strokeRect(X(0), Y(0), room.w * s, room.h * s);
+
+    // the road, so the walking line is readable at a glance
+    mapCtx.strokeStyle = '#5c4a2e';
+    mapCtx.lineWidth = 4;
+    mapCtx.lineJoin = 'round';
+    mapCtx.beginPath();
+    room.road.pts.forEach((pt, i) => i ? mapCtx.lineTo(X(pt.x), Y(pt.y)) : mapCtx.moveTo(X(pt.x), Y(pt.y)));
+    mapCtx.stroke();
+
+    // enemies as sparks, the gate as a ring
+    mapCtx.fillStyle = '#ff8a6a';
+    for (const e of room.enemies) {
+      mapCtx.beginPath(); mapCtx.arc(X(e.x), Y(e.y), e.kind === 'boss' ? 5 : 2.6, 0, TAU); mapCtx.fill();
+    }
+    mapCtx.strokeStyle = room.cleared ? '#7ce0a0' : '#e0a44e';
+    mapCtx.lineWidth = 3;
+    mapCtx.beginPath(); mapCtx.arc(X(room.door.x), Y(room.door.y), 7, 0, TAU); mapCtx.stroke();
+
+    // the part of the chamber currently on screen
+    const vw = VW / cam.scale, vh = VH / cam.scale;
+    mapCtx.strokeStyle = '#ffffff40';
+    mapCtx.lineWidth = 1;
+    mapCtx.strokeRect(X(cam.x), Y(cam.y), vw * s, vh * s);
+
+    const p = state.player;
+    mapCtx.fillStyle = '#ffe9a8';
+    mapCtx.beginPath(); mapCtx.arc(X(p.x), Y(p.y), 3.4, 0, TAU); mapCtx.fill();
+  }
+
+  // Dust drifting in the torchlight, drawn in screen space so it covers the view
+  // evenly. Purely atmospheric, but it stops a big hall from feeling static.
+  const dust = [];
+  function drawDust(t) {
+    if (dust.length === 0) {
+      for (let i = 0; i < 70; i++) {
+        dust.push({ x: Math.random(), y: Math.random(), s: rand(0.4, 1.5), sp: rand(4, 16), ph: rand(0, 9) });
+      }
+    }
+    for (const d of dust) {
+      const y = (d.y * VH + Math.sin(t * 0.4 + d.ph) * 14) % VH;
+      const x = (d.x * VW + t * d.sp) % VW;
+      ctx.globalAlpha = 0.05 + 0.09 * (0.5 + 0.5 * Math.sin(t * 1.4 + d.ph));
+      ctx.fillStyle = '#ffe6c0';
+      ctx.beginPath(); ctx.arc(x, y, d.s, 0, TAU); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
   }
 
   // The road: a worn stone path from where the hero came in to the gate. Drawn
@@ -2195,6 +2495,37 @@
   }
 
   function drawProjectile(pr, t) {
+    if (pr.kind === 'impact') {
+      // A ring that snaps out of the wound and fades: the clearest read that a
+      // blow connected, and it sits under the enemy so it never hides the body.
+      const k = clamp(pr.t / (pr.big ? 0.26 : 0.18), 0, 1);
+      const grow = 1 - k;
+      ctx.globalAlpha = k * (pr.big ? 0.9 : 0.7);
+      ctx.strokeStyle = pr.big ? '#fff3d0' : '#ffe1a8';
+      ctx.lineWidth = (pr.big ? 5 : 3) * k + 1;
+      ctx.beginPath();
+      ctx.arc(pr.x, pr.y, pr.r * (0.35 + grow * 0.85), 0, TAU);
+      ctx.stroke();
+      if (pr.big) {
+        ctx.globalAlpha = k * 0.5;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(pr.x, pr.y, pr.r * (0.2 + grow * 1.35), 0, TAU);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+      return;
+    }
+    if (pr.kind === 'debris') {
+      const k = clamp(pr.t / 0.4, 0, 1);
+      ctx.globalAlpha = k;
+      ctx.fillStyle = pr.color || '#ffe9a8';
+      ctx.beginPath();
+      ctx.arc(pr.x, pr.y, pr.r * (0.5 + k), 0, TAU);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      return;
+    }
     if (pr.kind === 'spark') {
       const k = clamp(pr.t / 0.16, 0, 1);
       ctx.globalAlpha = k;
@@ -2276,7 +2607,12 @@
   function frame(t) {
     const dt = Math.min(0.033, (t - lastT) / 1000 || 0.016);
     lastT = t;
-    if (mode === 'playing') update(dt);
+    // Hit stop: the frame is held for a few dozen milliseconds so a solid blow
+    // reads as impact rather than as a number changing. Only the simulation
+    // pauses; rendering carries on, so nothing flickers.
+    if (hitStop > 0) {
+      hitStop = Math.max(0, hitStop - dt);
+    } else if (mode === 'playing') update(dt);
     else if (mode === 'corridor') {
       corridor.t += dt;
       if (corridor.t >= corridor.dur) finishCorridor();
@@ -2334,7 +2670,7 @@
   try {
     const best = localStorage.getItem('ue_best');
     if (best) document.getElementById('bestLine').textContent = 'Best depth so far: ' + best;
-    document.getElementById('buildLine').textContent = 'art build 3';
+    document.getElementById('buildLine').textContent = 'art build 5';
   } catch (e) {}
 
   // Debug snapshot for automated checks (see ?debug=1).
@@ -2354,6 +2690,8 @@
   requestAnimationFrame((t) => { lastT = t; frame(t); });
   window.__game = { get mode() { return mode; }, start: startRun, get state() { return state; }, get room() { return room; }, get cam() { return cam; },
                     get corridor() { return corridor; }, skipCorridor: finishCorridor, weapons: WEAPONS,
+                    get padActive() { return padActive; }, get shake() { return shake; },
+                    get hitStop() { return hitStop; }, setPadActive,
                     swing, hurtEnemy };
 
   // Offline PWA. Browsers do not reliably re-check a service worker on their

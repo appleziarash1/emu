@@ -31,7 +31,7 @@ with sync_playwright() as pw:
     )
 
     phases = []
-    for step in range(240):
+    for step in range(420):
         page.evaluate(
             """() => {
               const g = window.__game, s = g.state, r = g.room;
@@ -40,8 +40,11 @@ with sync_playwright() as pw:
               let tx = r.door ? r.door.x : 0, ty = r.door ? r.door.y : 0;
               if (r.enemies.length) { tx = r.enemies[0].x; ty = r.enemies[0].y; }
               const p = s.player;
+              // chambers are several screens wide now, so the harness strides
+              // proportionally to the room instead of a fixed handful of units
               const dx = tx - p.x, dy = ty - p.y, d = Math.hypot(dx, dy) || 1;
-              p.x += (dx / d) * 9; p.y += (dy / d) * 9;
+              const stride = Math.max(9, Math.min(28, d * 0.25));
+              p.x += (dx / d) * stride; p.y += (dy / d) * stride;
               p.faceX = dx / d; p.faceY = dy / d;
               p.hx = dx / d; p.hy = dy / d;
             }"""

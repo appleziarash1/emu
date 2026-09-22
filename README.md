@@ -10,9 +10,9 @@ each one, and fight the Warden at the gate.
 
 ## Arms
 
-Five weapons, chosen before the run and tradable at any reward screen. Each has
-its own reach, cadence and drawing, so a run plays differently depending on what
-is in hand.
+Five weapons, chosen before the run. Each has its own reach, cadence and drawing, so
+a run plays differently depending on what is in hand. The arm you pick is yours for
+the whole descent: reward screens offer a god's boon, never a weapon swap.
 
 | Arm | Kind | Reach | Cooldown | Character |
 | --- | --- | --- | --- | --- |
@@ -24,10 +24,25 @@ is in hand.
 
 ## The descent
 
-Each chamber is a place you walk through: a paved road runs in from the wall
-opposite the gate and bends its way to the gate, with lanterns along it. When the
-gate opens, a short corridor scene plays - the hero walks the road toward the next
-arch - which can be skipped with one tap.
+Each chamber is a hall several screens across - the view pans with the hero, so the
+descent feels like travelling through a place rather than fighting in a box. Deeper
+chambers grow larger.
+
+A paved road runs in from the wall opposite the gate and bends its way to the gate,
+past torches and pillars. The floor is laid stone with moss, rubble and old bone,
+and dust drifts through the torchlight. Walls ring the hall, and they are solid.
+
+The gate is easy to lose in a hall this size, so a minimap in the corner shows the
+chamber outline, the road, the gate, the enemies, and the part of the room on screen.
+
+When the gate opens, a short corridor scene plays - the hero walks the road toward
+the next arch - which can be skipped with one tap.
+
+## Hitting a foe
+
+A landed blow is meant to feel like one. The frame stops for a moment, the camera is
+kicked, and an impact ring and sparks burst out of the wound. Heavier strikes and
+kills hit harder than quick taps do.
 
 ## Run
 
@@ -45,8 +60,10 @@ state readout.
 - `manifest.webmanifest`, `sw.js`, `icon-*.png` — PWA install + offline shell
 - `smoke_test.py` — headless playthrough: clears chambers, takes boons, beats a boss
 - `pwa_test.py` — checks install criteria, offline reload, and the touch joystick
-- `control_test.py` — the floating stick: spawn point, dead zone, tracking, release
-- `feature_test.py` — weapon mechanics, the road through a chamber, the corridor
+- `control_test.py` — the floating stick (spawn, dead zone, tracking, release),
+  controller takeover, and the feel of a landed hit
+- `feature_test.py` — weapon mechanics, chamber size and walls, the road, the
+  minimap, the corridor
 - `update_test.py` — caches a build, ships a new one, asserts the new one arrives
 - `stale_phone_test.py`, `clear_data_test.py` — the one-off migration off the old
   cache-first worker, for phones that installed a build before the fix
@@ -57,8 +74,8 @@ state readout.
 ```bash
 python3 smoke_test.py "http://localhost:12001/?debug=1"   # expects depths 1..8+, a boss at depth 5
 python3 pwa_test.py                                        # expects all checks True
-python3 control_test.py                                    # joystick precision + aim assist
-python3 feature_test.py                                    # weapons, road, corridor
+python3 control_test.py                                    # joystick, controller, hit feel
+python3 feature_test.py                                    # weapons, big chambers, maps
 python3 art_test.py                                        # per-character palette check
 python3 update_test.py                                     # proves updates and offline both work
 python3 stale_phone_test.py                                # old installs heal within two reopens
@@ -89,3 +106,6 @@ the running build is always visible.
 - `STRIKE` / `J` / gamepad A swings the arm you carry; it snaps onto a nearby foe.
 - `DASH` / space / gamepad B dashes, and makes you briefly untouchable.
 - `WASD`/arrows or a gamepad's left stick also move you.
+- Connect a controller and the virtual joystick and the on-screen buttons hide
+  themselves; unplug it and they return. The pad replaces the touch controls rather
+  than laying itself over them, so nothing sits in the way of the view.

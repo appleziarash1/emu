@@ -49,15 +49,16 @@ with sync_playwright() as pw:
     # Drag on the left half and confirm the player actually moves. The stick is
     # floating, so the touch point is what defines the direction, not the ring.
     before = page.evaluate("() => ({x: window.__game.state.player.x, y: window.__game.state.player.y})")
-    page.touchscreen.tap(120, 600)
+    page.mouse.move(120, 600)
+    page.mouse.down()
     page.wait_for_timeout(120)
     origin = page.evaluate("""() => {
       const s = document.getElementById('stick');
-      return { left: parseFloat(s.style.left), top: parseFloat(s.style.top) };
+      const r = s.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
     }""")
-    print("stick spawned under the thumb:", 60 < origin["left"] < 90 and 540 < origin["top"] < 570)
-    page.mouse.move(120, 600)
-    page.mouse.down()
+    print("stick spawned under the thumb:", abs(origin["x"] - 120) < 4 and
+          abs(origin["y"] - 600) < 4, origin)
     page.mouse.move(120, 520, steps=6)
     page.wait_for_timeout(500)
     page.mouse.up()

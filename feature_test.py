@@ -110,33 +110,37 @@ with sync_playwright() as pw:
     }""")
     check("arrow damages the distant foe", landed["hp"] is not None and landed["hp"] < 900, landed)
 
-    # --- swapping arms mid-run is offered and works
-    swap = page.evaluate("""() => {
+    # --- the reward screen offers boons only: the arm is locked for the run
+    page.evaluate("""() => {
       const g = window.__game, s = g.state;
       s.depth = 1;
-      g.state.dmg = 400;
-      // clear the room so the reward screen opens
-      g.room.enemies.length = 0;
-      return true;
+      s.dmg = 400;
+      g.room.enemies.length = 0;   // clear the room so the reward screen opens
     }""")
     page.wait_for_timeout(900)
     cards = page.evaluate("""() => {
       const cards = [...document.querySelectorAll('#cardsBody .card')];
-      return { count: cards.length, trades: cards.filter((c) => c.textContent.includes('CHANGE YOUR ARM')).length,
+      return { count: cards.length,
+               trades: cards.filter((c) => c.textContent.includes('CHANGE YOUR ARM')).length,
+               weapons: cards.filter((c) => c.textContent.includes('Xiphos') ||
+                                             c.textContent.includes('Spear') ||
+                                             c.textContent.includes('Fangs') ||
+                                             c.textContent.includes('Hammer') ||
+                                             c.textContent.includes('Bow')).length,
                title: document.getElementById('cardsTitle').textContent };
     }""")
-    check("reward screen offers weapon trades", cards["trades"] == 4, cards)
+    check("reward screen offers boons only", cards["trades"] == 0 and cards["weapons"] == 0, cards)
+    check("reward screen still shows boon cards", cards["count"] >= 3, cards["count"])
 
-    traded = page.evaluate("""() => {
-      const cards = [...document.querySelectorAll('#cardsBody .card')];
-      const trade = cards.find((c) => c.textContent.includes('Spear'));
-      if (!trade) return null;
-      trade.click();
+    picked = page.evaluate("""() => {
       const g = window.__game;
-      return { weapon: g.state.weapon.id, mode: g.mode };
+      const held = g.state.weapon.id;
+      document.querySelector('#cardsBody .card').click();
+      return { held, after: g.state.weapon.id, mode: g.mode, boons: g.state.boons.length };
     }""")
-    check("trading a weapon takes effect immediately",
-          traded and traded["weapon"] == "spear" and traded["mode"] == "playing", traded)
+    check("taking a boon keeps the chosen arm",
+          picked["after"] == picked["held"] and picked["mode"] == "playing" and picked["boons"] == 1,
+          picked)
 
     # --- the road: a chamber has one, and it runs from the entry to the gate
     road = page.evaluate("""() => {
@@ -174,6 +178,79 @@ with sync_playwright() as pw:
       return { roadPx: [...roadPx].slice(0, 3), offPx: [...offPx].slice(0, 3), diff };
     }""")
     check("the road is visibly paved", painted["diff"] > 12, painted)
+
+    # --- the chamber is larger than the viewport, so the camera has to pan
+    size = page.evaluate("""() => {
+      const g = window.__game, r = g.room;
+      return { w: r.w, h: r.h, vw: window.innerWidth / g.cam.scale,
+               vh: window.innerHeight / g.cam.scale, inset: r.inset,
+               torches: r.torches.length, pillars: r.pillars.length,
+               rubble: r.rubble.length, bones: r.bones.length };
+    }""")
+    check("the chamber is wider than the view", size["w"] > size["vw"] * 1.3,
+          (size["w"], round(size["vw"])))
+    check("the chamber is taller than the view", size["h"] > size["vh"] * 1.3,
+          (size["h"], round(size["vh"])))
+    check("the chamber is walled", size["inset"] >= 40, size["inset"])
+    check("the walls are dressed with torches and pillars",
+          size["torches"] >= 2 and size["pillars"] >= 1, size)
+    check("the floor is dressed with rubble and bone",
+          size["rubble"] >= 4 and size["bones"] >= 2, size)
+
+    # panning: walking to one side of the hall must move the camera, not the hero
+    # alone, and the camera must never show past the walls
+    pan = page.evaluate("""() => {
+      const g = window.__game, s = g.state, r = g.room;
+      s.player.x = r.inset + 60; s.player.y = r.h / 2;
+      return { x: s.player.x };
+    }""")
+    page.wait_for_timeout(500)
+    left = page.evaluate("""() => ({ cam: window.__game.cam.x, player: window.__game.state.player.x })""")
+    page.evaluate("""() => { const r = window.__game.room; window.__game.state.player.x = r.w - r.inset - 60; }""")
+    page.wait_for_timeout(700)
+    right = page.evaluate("""() => {
+      const g = window.__game, r = g.room;
+      const vw = window.innerWidth / g.cam.scale;
+      return { cam: g.cam.x, player: g.state.player.x, maxCam: r.w - vw,
+               wall: r.w - r.inset };
+    }""")
+    check("the camera pans as the hero crosses the hall", right["cam"] > left["cam"] + 60,
+          (round(left["cam"]), round(right["cam"])))
+    check("the camera never shows past the far wall",
+          0 <= right["cam"] <= right["maxCam"] + 0.6, right)
+    check("the hero is held inside the wall", right["player"] <= right["wall"] + 1, right)
+
+    # --- the walls actually block: shoving the hero at a wall must not pass it
+    blocked = page.evaluate("""() => {
+      const g = window.__game, s = g.state, r = g.room;
+      s.player.x = r.inset + 40; s.player.y = r.h / 2;
+      s.player.hx = -1; s.player.hy = 0;
+      return { inset: r.inset };
+    }""")
+    page.mouse.move(120, 600)
+    page.mouse.down()
+    page.mouse.move(20, 600, steps=6)
+    page.wait_for_timeout(900)
+    page.mouse.up()
+    wall = page.evaluate("""() => {
+      const g = window.__game, r = g.room;
+      return { x: g.state.player.x, inset: r.inset };
+    }""")
+    check("the hero cannot walk through the wall", wall["x"] >= wall["inset"] - 1, wall)
+
+    # --- the minimap: in a hall several screens across the gate must stay findable
+    mini = page.evaluate("""() => {
+      const g = window.__game, r = g.room;
+      const c = document.getElementById('mapCanvas');
+      const box = c.getBoundingClientRect();
+      const px = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      const seen = new Set();
+      for (let i = 0; i < px.length; i += 4 * 37) seen.add(px[i] + ',' + px[i+1] + ',' + px[i+2]);
+      return { visible: box.width > 0 && box.height > 0, colors: seen.size,
+               w: r.w, h: r.h };
+    }""")
+    check("the minimap is on screen", mini["visible"], mini)
+    check("the minimap draws the chamber, road and gate", mini["colors"] > 5, mini)
 
     # --- the corridor: reaching the gate walks a scene instead of cutting
     page.evaluate("""() => {
