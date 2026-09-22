@@ -49,7 +49,17 @@ function check(name, cond, extra = '') {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
-  const { server, port } = await startServer();
+  // E2E_URL points the suite at a real deployment instead of the local dist/.
+  const remote = process.env.E2E_URL;
+  let server = null;
+  let port = null;
+  let origin;
+  if (remote) {
+    origin = remote.replace(/\/$/, '') + '/';
+  } else {
+    ({ server, port } = await startServer());
+    origin = `http://127.0.0.1:${port}${BASE}`;
+  }
   const browser = await chromium.launch();
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await context.newPage();
@@ -61,7 +71,7 @@ async function main() {
   });
   page.on('pageerror', (err) => pageErrors.push(err.message));
 
-  await page.goto(`http://127.0.0.1:${port}${BASE}`, { waitUntil: 'load' });
+  await page.goto(origin, { waitUntil: 'load' });
 
   // Wait for the game handle and for Boot -> Menu.
   await page.waitForFunction(() => window.__VEILBORN__ && window.__VEILBORN__.gameState && window.__VEILBORN__.gameState.booted, null, { timeout: 20000 });
@@ -324,7 +334,7 @@ async function main() {
   const offPage = await offlineContext.newPage();
   const offErrors = [];
   offPage.on('pageerror', (err) => offErrors.push(err.message));
-  await offPage.goto(`http://127.0.0.1:${port}${BASE}`, { waitUntil: 'load' });
+  await offPage.goto(origin, { waitUntil: 'load' });
   // Wait until the SW is activated and controlling the page.
   const swReady = await offPage.evaluate(async () => {
     if (!('serviceWorker' in navigator)) return 'unsupported';
@@ -398,13 +408,14 @@ async function main() {
   check('run stays paused on return', lifecycle.stillPaused === true && lifecycle.overlay === true, JSON.stringify(lifecycle));
 
   await browser.close();
-  server.close();
+  if (server) server.close();
 
   console.log('\n== error summary ==');
   check('no uncaught page errors', pageErrors.length === 0, JSON.stringify(pageErrors.slice(0, 5)));
   check('no console errors', consoleErrors.length === 0, JSON.stringify(consoleErrors.slice(0, 5)));
 
   console.log(`\n${passes.length} passed, ${failures.length} failed`);
+  if (server) server.close();
   if (failures.length) { console.error('\nFAILURES:\n' + failures.join('\n')); process.exit(1); }
   process.exit(0);
 }
