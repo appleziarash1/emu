@@ -11,9 +11,24 @@ with sync_playwright() as pw:
     page = browser.new_page(viewport={"width": 390, "height": 780}, has_touch=True, is_mobile=True)
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
+    # On a fresh profile the game installs its service worker and the worker's
+    # `controllerchange` reloads the page once. That reload would blank
+    # `__game.state` mid-run, so the update machinery is stubbed here; the
+    # service worker has its own suite in pwa_test.py.
+    page.add_init_script("""
+      try {
+        Object.defineProperty(navigator, 'serviceWorker', {
+          configurable: true,
+          value: { addEventListener() {}, register: () => new Promise(() => {}), controller: null },
+        });
+      } catch (e) {}
+    """)
     page.goto(URL, wait_until="load")
 
     page.click("#playBtn")
+    # The click can land while the game is still booting; wait for a live run
+    # rather than assuming the first press took.
+    page.wait_for_function("() => window.__game && window.__game.state")
     page.wait_for_timeout(600)
     print("after start:", page.evaluate("window.__game.mode"))
     # Hold the strike key for the whole run: the sim reads it every frame.
