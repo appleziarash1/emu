@@ -122,12 +122,17 @@ the running build is always visible.
 - Touch anywhere on the left half of the screen: the stick appears under your
   thumb, and the ring follows it. A short travel is ignored, so a resting thumb
   does not make you drift.
-- `STRIKE` / `J` / gamepad A swings the arm you carry; it snaps onto a nearby foe.
-- `DASH` / space / gamepad B dashes, and makes you briefly untouchable.
+- `STRIKE` / `J` / gamepad X swings the arm you carry; it snaps onto a nearby foe.
+- `SPELL` / `U` / gamepad B bursts outward all around you, wounding everything
+  close and knocking incoming shots out of the air. It recharges slowly.
+- `SPECIAL` / `I` / gamepad Y hurls a blade that cuts one side of the room and
+  comes back to your hand, cutting the same foes again on the way home.
+- `DASH` / space / gamepad A dashes, and makes you briefly untouchable.
 - `WASD`/arrows or a gamepad's left stick also move you. On a desktop the mouse can
   drag the floating stick too.
 - A connected controller replaces the touch controls: they hide while it is in use
   and return when it is unplugged.
-- On a mouse-and-keyboard machine the resting thumb ring and the two big touch
-  buttons stay out of the way, and a small `WASD move · J strike · Space dash` hint
-  takes their place. Phones still get the full on-screen pad.
+- On a mouse-and-keyboard machine the resting thumb ring and the touch buttons stay
+  out of the way, and a small
+  `WASD move · J strike · U spell · I special · Space dash` hint takes their place.
+  Phones still get the full on-screen pad.

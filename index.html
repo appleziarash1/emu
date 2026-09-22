@@ -118,8 +118,14 @@
           touch-action: none; align-items: center; justify-content: center;
           -webkit-user-select: none; user-select: none; }
   .tbtn.on { display: flex; }
-  #btnDash { right: 18px; bottom: calc(env(safe-area-inset-bottom) + 132px); width: 78px; height: 78px; font-size: 12px; }
-  #btnHit  { right: 96px; bottom: calc(env(safe-area-inset-bottom) + 26px); width: 98px; height: 98px; font-size: 15px; }
+  /* A four-button cluster, with the strike where the thumb already rests. */
+  #btnDash { right: 158px; bottom: calc(env(safe-area-inset-bottom) + 30px); width: 62px; height: 62px; font-size: 11px; }
+  #btnHit  { right: 84px; bottom: calc(env(safe-area-inset-bottom) + 24px); width: 96px; height: 96px; font-size: 15px; }
+  #btnSpec { right: 150px; bottom: calc(env(safe-area-inset-bottom) + 108px); width: 66px; height: 66px; font-size: 11px; }
+  #btnSpell { right: 66px; bottom: calc(env(safe-area-inset-bottom) + 134px); width: 70px; height: 70px; font-size: 11px; }
+  .tbtn.cool { opacity: .42; }
+  .tbtn.cool::after { content: ''; position: absolute; inset: -2px; border-radius: 50%;
+          border: 2px solid #7fd4ffcc; clip-path: inset(0 0 var(--cool, 0%) 0); }
   .tbtn:active, .tbtn.press { background: #ffd4794d; border-color: #ffd47999; }
   #toast { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); z-index: 15;
            padding: 10px 18px; border-radius: 999px; background: #241041f2; border: 1px solid #ffffff33;
@@ -178,13 +184,15 @@
       <canvas id="mapCanvas" width="168" height="168"></canvas>
       <div class="mapLabel">gate</div>
     </div>
-    <div id="keyHint">WASD move &middot; J strike &middot; Space dash</div>
+    <div id="keyHint">WASD move &middot; J strike &middot; U spell &middot; I special &middot; Space dash</div>
     <button id="saveBtn" type="button">SAVE</button>
   </div>
 
   <div id="touchZone"></div>
   <div id="stick"><span>move</span><i></i></div>
   <button class="tbtn" id="btnDash" type="button">DASH</button>
+  <button class="tbtn" id="btnSpec" type="button">SPECIAL</button>
+  <button class="tbtn" id="btnSpell" type="button">SPELL</button>
   <button class="tbtn" id="btnHit" type="button">STRIKE</button>
 
   <div id="toast"></div>
@@ -239,11 +247,16 @@
         thumb, and the ring follows it, so you never have to hunt for it.<br />
       • STRIKE swings the weapon you are carrying. It also snaps onto a nearby foe,
         so you do not have to aim perfectly.<br />
+      • SPELL bursts outward all around you, hurting everything close and knocking
+        their shots out of the air. It recharges slowly, so save it for trouble.<br />
+      • SPECIAL hurls a blade that cuts through one side of the room and comes
+        back to your hand, cutting again on the way home.<br />
       • DASH makes you briefly untouchable — dash through enemies to escape.<br />
       • Clear every shade in a chamber, then pick a god's boon. The arm you chose
         at the start stays with you all the way down.<br />
       • Boons stack. Build a strong run, then beat the Warden.<br />
-      • A physical controller or keyboard also works.
+      • Keyboard: WASD or arrows to move, J strike, U spell, I special, Space dash.<br />
+      • Controller: left stick to move, X strike, Y special, B spell, A dash.
     </p>
     <div class="row"><button class="btn" id="helpBack" type="button">Got it</button></div>
   </div>
@@ -289,13 +302,15 @@
 
   // ---------------------------------------------------------------- input
   const input = { x: 0, y: 0 };
-  const held = { hit: false, dash: false };
+  const held = { hit: false, dash: false, spell: false, special: false };
   // A press can land while the sim is frozen for hit stop. Holding it as a
   // short-lived flag means a tap is never swallowed by a frame that was skipped.
-  const pressBuf = { hit: 0, dash: 0 };
+  const pressBuf = { hit: 0, dash: 0, spell: 0, special: 0 };
   const BUFFER = 0.14;
   function pressHit() { pressBuf.hit = BUFFER; }
   function pressDash() { pressBuf.dash = BUFFER; }
+  function pressSpell() { pressBuf.spell = BUFFER; }
+  function pressSpecial() { pressBuf.special = BUFFER; }
 
   // Floating joystick. The stick has no fixed home: it appears under the thumb
   // wherever the left half of the screen is touched, so there is nothing to
@@ -408,11 +423,18 @@
   }
   bindButton('btnHit', 'hit');
   bindButton('btnDash', 'dash');
+  bindButton('btnSpell', 'spell');
+  bindButton('btnSpec', 'special');
 
   const keys = {};
   window.addEventListener('keydown', (e) => {
     const k = e.key.toLowerCase();
-    if (!keys[k]) { if (k === 'j') pressHit(); if (k === ' ' || k === 'k') pressDash(); }
+    if (!keys[k]) {
+      if (k === 'j') pressHit();
+      if (k === ' ' || k === 'k') pressDash();
+      if (k === 'u' || k === 'q') pressSpell();
+      if (k === 'i' || k === 'e') pressSpecial();
+    }
     keys[k] = true;
     if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
   });
@@ -429,8 +451,8 @@
   }
   let padHit = false, padDash = false;
   let padActive = false;
-  const padPrev = { hit: false, dash: false };
-  const padEdge = { hit: false, dash: false };
+  const padPrev = { hit: false, dash: false, spell: false, special: false };
+  const padEdge = { hit: false, dash: false, spell: false, special: false };
   // A phone has no keyboard, so the touch buttons stay; a desktop does, and gets
   // a key hint instead of two large circles over the play area.
   const hasKeyboard = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
@@ -450,6 +472,12 @@
     if (![...pads].some(Boolean)) setPadActive(false);
   });
 
+  // Standard pad layout: X strikes, Y casts the special, B casts the spell, A
+  // dashes. The shoulder buttons and the D-pad stay aliases for dash and strike
+  // so an older habit still works.
+  const PAD = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, DPAD_UP: 12, DPAD_DOWN: 13 };
+  function padPressed(p, i) { return !!(p.buttons[i] && p.buttons[i].pressed); }
+
   function readPad() {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (const p of pads) {
@@ -460,14 +488,18 @@
       let x = p.axes[0] || 0, y = p.axes[1] || 0;
       if (Math.abs(x) < 0.18) x = 0;
       if (Math.abs(y) < 0.18) y = 0;
-      const hitDown = !!(p.buttons[0] && p.buttons[0].pressed) || !!(p.buttons[7] && p.buttons[7].pressed);
-      const dashDown = !!(p.buttons[1] && p.buttons[1].pressed) || !!(p.buttons[5] && p.buttons[5].pressed) ||
-                       !!(p.buttons[6] && p.buttons[6].pressed);
+      const hitDown = padPressed(p, PAD.X) || padPressed(p, PAD.RB);
+      const dashDown = padPressed(p, PAD.A) || padPressed(p, PAD.LB) || padPressed(p, PAD.LT);
+      const spellDown = padPressed(p, PAD.B);
+      const specialDown = padPressed(p, PAD.Y) || padPressed(p, PAD.RT);
       // Rising edges are buffered so a pad tap is not lost to a skipped frame.
       if (hitDown && !padPrev.hit) padEdge.hit = true;
       if (dashDown && !padPrev.dash) padEdge.dash = true;
+      if (spellDown && !padPrev.spell) padEdge.spell = true;
+      if (specialDown && !padPrev.special) padEdge.special = true;
       padPrev.hit = hitDown; padPrev.dash = dashDown;
-      return { x, y, hit: hitDown, dash: dashDown };
+      padPrev.spell = spellDown; padPrev.special = specialDown;
+      return { x, y, hit: hitDown, dash: dashDown, spell: spellDown, special: specialDown };
     }
     return null;
   }
@@ -561,6 +593,7 @@
       arc: false, slow: false, mist: false, blast: false,
       shield: 0, shieldMax: 0,
       dashPow: 640, dashCd: 0, dashCdMax: 0.9, dashT: 0, inv: 0,
+      splCd: 0, splCdMax: 8, specCd: 0, specCdMax: 6,
       swingT: 0, swingCd: 0, weapon,
       xp: 0, level: 1, obols: 0,
       depth: 1, kills: 0, boons: [], takenIds: {}, offer: null, tAcc: 0,
@@ -843,6 +876,57 @@
         room.projectiles.push({ x: e.x, y: e.y, t: 0.22, kind: 'blast', r: 90 });
       }
     }
+  }
+
+  // ------------------------------------------------------------------ spells
+  // The spell is a slow, wide, self-centred burst: the panic button. Its cooldown
+  // is long, so it is a decision rather than a rhythm.
+  function castSpell() {
+    if (state.splCd > 0) return false;
+    const p = state.player;
+    state.splCd = state.splCdMax;
+    const R = 170;
+    room.projectiles.push({ x: p.x, y: p.y, t: 0.42, kind: 'nova', r: R });
+    for (const e of room.enemies) {
+      if (e.dead) continue;
+      const d = dist(e, p);
+      if (d > R + e.r) continue;
+      hurtEnemy(e, state.dmg * 2.1, { x: (e.x - p.x) / (d || 1), y: (e.y - p.y) / (d || 1) });
+      e.slowed = Math.max(e.slowed || 0, state.slow ? 1.6 : 0.6);
+    }
+    for (const pr of room.projectiles) {
+      if (pr.hostile && pr.kind !== 'blast' && pr.kind !== 'spark' && pr.kind !== 'impact' &&
+          Math.hypot(pr.x - p.x, pr.y - p.y) < R) pr.t = 0;
+    }
+    // The burst briefly shields the caster, which is what makes it a way out of
+    // a corner rather than just an attack.
+    state.inv = Math.max(state.inv, 0.5);
+    toast('Spell — the room repels');
+    return true;
+  }
+
+  // The special is a throwing weapon: a heavy blade hurled forward that cuts
+  // everything it passes through on the way out and the way back.
+  function castSpecial() {
+    if (state.specCd > 0) return false;
+    const p = state.player;
+    state.specCd = state.specCdMax;
+    let lx = p.faceX, ly = p.faceY;
+    // Facing is (0,1) until the hero first moves. A plain `faceY || 1` would turn
+    // a due-east aim (faceY exactly 0) into a 45-degree throw, so check for a
+    // missing value rather than a falsy one.
+    if (!isFinite(lx) || !isFinite(ly) || (lx === 0 && ly === 0)) { lx = 0; ly = 1; }
+    const m = Math.hypot(lx, ly) || 1;
+    lx /= m; ly /= m;
+    const speed = 520;
+    room.projectiles.push({
+      x: p.x + lx * 18, y: p.y + ly * 18,
+      vx: lx * speed, vy: ly * speed,
+      r: 15, dmg: state.dmg * 1.5, t: 1.5, kind: 'chakram', hostile: false,
+      spin: 0, returning: false, hitSet: [],
+    });
+    state.swingT = 0.2;
+    return true;
   }
 
   // Ranged weapons share one projectile shape; the weapon decides damage, speed
@@ -1145,7 +1229,9 @@
     const kb = readKeys();
     // readPad also records rising edges so a pad press is buffered like any other
     const padHitNow = padEdge.hit, padDashNow = padEdge.dash;
+    const padSpellNow = padEdge.spell, padSpecialNow = padEdge.special;
     padEdge.hit = false; padEdge.dash = false;
+    padEdge.spell = false; padEdge.special = false;
     let mx = input.x + kb.x + (pad ? pad.x : 0);
     let my = input.y + kb.y + (pad ? pad.y : 0);
     const ml = Math.hypot(mx, my);
@@ -1173,11 +1259,15 @@
     state.swingT = Math.max(0, state.swingT - dt);
     state.dashCd = Math.max(0, state.dashCd - dt);
     state.dashT = Math.max(0, state.dashT - dt);
+    state.splCd = Math.max(0, state.splCd - dt);
+    state.specCd = Math.max(0, state.specCd - dt);
 
     // A buffered press survives the frames that hit stop skips, so a tap always
     // counts even when it lands on an impact.
     pressBuf.hit = Math.max(0, pressBuf.hit - dt);
     pressBuf.dash = Math.max(0, pressBuf.dash - dt);
+    pressBuf.spell = Math.max(0, pressBuf.spell - dt);
+    pressBuf.special = Math.max(0, pressBuf.special - dt);
 
     const wantDash = held.dash || kb.dash || pressBuf.dash > 0 || padDashNow;
     if (wantDash && state.dashCd <= 0 && (ml > 0.05 || p.faceY)) {
@@ -1188,6 +1278,10 @@
     }
     const wantHit = held.hit || kb.hit || pressBuf.hit > 0 || padHitNow;
     if (wantHit) { pressBuf.hit = 0; swing(); }
+    const wantSpell = held.spell || pressBuf.spell > 0 || padSpellNow;
+    if (wantSpell) { pressBuf.spell = 0; castSpell(); }
+    const wantSpecial = held.special || pressBuf.special > 0 || padSpecialNow;
+    if (wantSpecial) { pressBuf.special = 0; castSpecial(); }
 
     // enemies
     for (const e of room.enemies) {
@@ -1251,12 +1345,40 @@
 
     // projectiles
     for (const pr of room.projectiles) {
-      // impact rings and debris only age; they are drawn, not simulated
-      if (pr.kind === 'spark' || pr.kind === 'blast' || pr.kind === 'impact') { pr.t -= dt; continue; }
+      // impact rings, bursts and debris only age; they are drawn, not simulated
+      if (pr.kind === 'spark' || pr.kind === 'blast' || pr.kind === 'impact' ||
+          pr.kind === 'nova') { pr.t -= dt; continue; }
       if (pr.kind === 'debris') {
         pr.t -= dt;
         pr.x += pr.vx * dt; pr.y += pr.vy * dt;
         pr.vx *= Math.pow(0.02, dt); pr.vy *= Math.pow(0.02, dt);
+        continue;
+      }
+      if (pr.kind === 'chakram') {
+        // Out, then sharply back: the blade reverses once and homes on the hero,
+        // so it retraces its own path and cuts the same foes again on the return.
+        pr.t -= dt;
+        pr.spin = (pr.spin || 0) + dt * 22;
+        if (!pr.returning && pr.t <= 0.75) pr.returning = true;
+        if (pr.returning) {
+          const hx = p.x - pr.x, hy = p.y - pr.y;
+          const hd = Math.hypot(hx, hy) || 1;
+          pr.vx = (hx / hd) * 620; pr.vy = (hy / hd) * 620;
+        }
+        pr.x += pr.vx * dt; pr.y += pr.vy * dt;
+        // Each foe is cut once per pass, so a hit does not repeat every frame.
+        const pass = pr.returning ? 1 : 0;
+        pr.hitSet = (pr.hitSet || []).filter((k) => k.pass === pass);
+        for (const e of room.enemies) {
+          if (e.dead) continue;
+          if (pr.hitSet.some((k) => k.e === e)) continue;
+          if (Math.hypot(pr.x - e.x, pr.y - e.y) < pr.r + e.r) {
+            hurtEnemy(e, pr.dmg, { x: pr.vx, y: pr.vy });
+            if (state.slow) e.slowed = 1.6;
+            pr.hitSet.push({ e, pass });
+          }
+        }
+        if (pr.returning && Math.hypot(pr.x - p.x, pr.y - p.y) < 22) pr.t = 0;
         continue;
       }
       pr.t -= dt;
@@ -1309,10 +1431,12 @@
     // Every enemy type flashes white on the frame it is struck.
     for (const e of room.enemies) e.hurt = Math.max(0, (e.hurt || 0) - dt);
 
-    // pickups for obols are automatic; door unlocks when the room is clear
-    if (!room.cleared && room.enemies.length === 0 &&
-        room.projectiles.every((x) => x.kind === 'spark' || x.kind === 'blast' ||
-                                    x.kind === 'impact' || x.kind === 'debris')) {
+    // pickups for obols are automatic; door unlocks when the room is clear.
+    // Anything that is not cosmetic or the player's own shot still holds the gate
+    // shut, so a thrown blade in flight cannot open the room a beat early.
+    const inert = (x) => x.kind === 'spark' || x.kind === 'blast' || x.kind === 'impact' ||
+                         x.kind === 'debris' || x.kind === 'arrow' || x.kind === 'chakram';
+    if (!room.cleared && room.enemies.length === 0 && room.projectiles.every(inert)) {
       room.cleared = true;
       if (room.isBoss) { toast('The gate stands open'); }
       else { openReward(); }
@@ -1437,6 +1561,7 @@
   const SAVE_VERSION = 1;
   const SAVE_FIELDS = ['hp', 'maxHp', 'dmg', 'speed', 'reach', 'knock', 'arc', 'slow',
                        'mist', 'blast', 'shield', 'shieldMax', 'dashPow', 'dashCdMax',
+                       'splCdMax', 'specCdMax',
                        'xp', 'level', 'obols', 'depth', 'kills', 'boons', 'takenIds'];
   // A save every few seconds, plus one at the moment the app is hidden, means a
   // run is at most a couple of blows old. Boon effects live in the saved numbers,
@@ -2744,6 +2869,41 @@
       ctx.globalAlpha = 1;
       return;
     }
+    if (pr.kind === 'nova') {
+      // The spell sweeps out from the hero and fades, so its reach is legible.
+      const k = clamp(pr.t / 0.42, 0, 1);
+      ctx.globalAlpha = k * 0.75;
+      const g = ctx.createRadialGradient(pr.x, pr.y, pr.r * 0.15, pr.x, pr.y, pr.r);
+      g.addColorStop(0, 'rgba(190,240,255,0)');
+      g.addColorStop(0.72, 'rgba(150,220,255,0.5)');
+      g.addColorStop(0.94, 'rgba(255,255,255,0.9)');
+      g.addColorStop(1, 'rgba(120,190,255,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1;
+      return;
+    }
+    if (pr.kind === 'chakram') {
+      // A spinning blade: the spin is what makes a return trip readable.
+      ctx.save();
+      ctx.translate(pr.x, pr.y);
+      ctx.rotate(pr.spin || 0);
+      ctx.fillStyle = '#e8e2ff';
+      ctx.beginPath();
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * TAU;
+        ctx.moveTo(0, 0);
+        ctx.arc(0, 0, pr.r, a + 0.16, a + 0.62);
+      }
+      ctx.fill();
+      ctx.fillStyle = '#8f7bd8';
+      ctx.beginPath(); ctx.arc(0, 0, pr.r * 0.42, 0, TAU); ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(0, 0, pr.r, 0, TAU); ctx.stroke();
+      ctx.restore();
+      return;
+    }
     if (pr.kind === 'blast') {
       const k = clamp(pr.t / 0.22, 0, 1);
       ctx.globalAlpha = k * 0.85;
@@ -2816,6 +2976,7 @@
       if (mode === 'corridor') drawCorridor(t / 1000);
       else render();
     }
+    refreshAbilityButtons();
     requestAnimationFrame(frame);
   }
 
@@ -2836,8 +2997,9 @@
       document.body.classList.add('kb');
       document.getElementById('keyHint').classList.add('on');
     } else {
-      document.getElementById('btnHit').classList.add('on');
-      document.getElementById('btnDash').classList.add('on');
+      for (const id of ['btnHit', 'btnDash', 'btnSpell', 'btnSpec']) {
+        document.getElementById(id).classList.add('on');
+      }
     }
   }
   function hideTouch() {
@@ -2845,8 +3007,24 @@
     touchZone.classList.remove('on');
     document.body.classList.remove('kb');
     document.getElementById('keyHint').classList.remove('on');
-    document.getElementById('btnHit').classList.remove('on');
-    document.getElementById('btnDash').classList.remove('on');
+    for (const id of ['btnHit', 'btnDash', 'btnSpell', 'btnSpec']) {
+      document.getElementById(id).classList.remove('on');
+    }
+  }
+
+  // The spell and special buttons dim while recharging and show a sweep of fill,
+  // so the player can tell "not yet" from "broken".
+  function refreshAbilityButtons() {
+    if (!state) return;
+    const pairs = [['btnSpell', state.splCd, state.splCdMax],
+                   ['btnSpec', state.specCd, state.specCdMax]];
+    for (const [id, cd, max] of pairs) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      const cooling = cd > 0.02;
+      el.classList.toggle('cool', cooling);
+      el.style.setProperty('--cool', cooling ? Math.round((cd / max) * 100) + '%' : '0%');
+    }
   }
 
   function startRun() {
@@ -2889,7 +3067,7 @@
   try {
     const best = localStorage.getItem('ue_best');
     if (best) document.getElementById('bestLine').textContent = 'Best depth so far: ' + best;
-    document.getElementById('buildLine').textContent = 'art build 7';
+    document.getElementById('buildLine').textContent = 'art build 8';
   } catch (e) {}
   refreshResume();
 
@@ -2914,7 +3092,8 @@
                     get corridor() { return corridor; }, skipCorridor: finishCorridor, weapons: WEAPONS,
                     get padActive() { return padActive; }, get shake() { return shake; },
                     get hitStop() { return hitStop; }, setPadActive,
-                    swing, hurtEnemy };
+                    swing, hurtEnemy, castSpell, castSpecial,
+                    pressSpell, pressSpecial, readPad, PAD, padEdge };
 
   // Offline PWA. Browsers do not reliably re-check a service worker on their
   // own, so look for a new build on every load and in the background, then

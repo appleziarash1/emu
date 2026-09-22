@@ -7,7 +7,8 @@ Single-file canvas roguelike PWA. No build step: `index.html` is the whole game,
 - Serve locally: `node serve.js` (port 12001).
 - Tests are Playwright scripts run one at a time; they need the server up:
   `smoke_test.py`, `art_test.py`, `pwa_test.py`, `feature_test.py`,
-  `control_test.py`, `update_test.py`, `stale_phone_test.py`, `clear_data_test.py`.
+  `control_test.py`, `save_test.py`, `update_test.py`, `stale_phone_test.py`,
+  `clear_data_test.py`, `ability_test.py`.
 - `index.html` is one inline script; a quick syntax gate without a browser is
   `node -e "new Function(require('fs').readFileSync('index.html','utf8').match(/<script>([\s\S]*)<\/script>/)[1])"`.
 
@@ -20,6 +21,13 @@ Single-file canvas roguelike PWA. No build step: `index.html` is the whole game,
   toward clearing a chamber, or a gate can stay shut forever.
 - Presses are buffered (`pressBuf`, `padEdge`) because a frame can be skipped
   during hit stop; a raw tap would otherwise be dropped.
+- The hero has four abilities, one per face button: X strike, Y special, B spell,
+  A dash. Shoulders and the D-pad are aliases. The same four are on `J`/`U`/`I`
+  and space, and on the four touch buttons. `ability_test.py` drives a stub
+  gamepad (`window.__pad`) because `navigator.getGamepads` is read-only.
+- A test that empties `room.enemies` must set `room.cleared = true` first, or the
+  chamber clears and the reward screen pauses the sim, making every later ability
+  check look broken.
 
 ## Save and resume
 - `saveRun()` writes the live run to `ue_run_v1`; `resumeRun()` rebuilds it. The
