@@ -67,9 +67,24 @@ with sync_playwright() as pw:
     page = browser.new_page(viewport={"width": 390, "height": 780}, has_touch=True, is_mobile=True)
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
+    # On a fresh profile the game installs its service worker and the worker's
+    # `controllerchange` makes the page reload itself once. That reload would blank
+    # `__game.state` in the middle of a check, so the update machinery is stubbed
+    # out here: these checks are about the game, not about staying up to date.
+    page.add_init_script("""
+      try {
+        Object.defineProperty(navigator, 'serviceWorker', {
+          configurable: true,
+          value: { addEventListener() {}, register: () => new Promise(() => {}), controller: null },
+        });
+      } catch (e) {}
+    """)
     page.goto(URL, wait_until="load")
     page.click("#playBtn")
-    page.wait_for_timeout(500)
+    # The game can also be mid-reload for reasons of its own; wait for a live run
+    # rather than assuming the click landed on the first try.
+    page.wait_for_function("() => window.__game && window.__game.state")
+    page.wait_for_timeout(400)
 
     # --- the roster is complete: every god has all three slots, and the shop
     # carries every god

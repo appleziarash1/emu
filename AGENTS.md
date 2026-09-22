@@ -84,6 +84,16 @@ Single-file canvas roguelike PWA. No build step: `index.html` is the whole game,
 - A pending reward choice is stored as `state.offer` (god ids) so a resume shows
   the same three, and `pendingPower` for a god picked but not yet slotted.
   `saveRun()` records `mode` so the check can pick the mode it resumes into.
+- A god variant's `flags` are only read by the combat code for the slot it was
+  bound to: `swing`/`applyStrikeEffects` read `state.se.attack`, the chakram
+  branch of the projectile update reads `state.se.special`, and `castSpell`
+  reads `state.se.spell`. A flag named for the wrong slot is written to the save
+  and never read, so the power looks bound but does nothing. `god_test.py`
+  audits this from the source and also drives the real swing/throw/cast, so add
+  a new effect flag in both places or the suite fails.
+- The special-slot flags live in the chakram branch of the projectile update,
+  which is not next to `castSpecial` in the file. A new special flag must be
+  read there, not in `castSpecial`, which only spawns the blade.
 
 ## Running the tests
 Playwright is not installed by default: `pip install playwright` then
