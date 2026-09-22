@@ -1,7 +1,8 @@
 """Verify the PWA install criteria, offline caching, and touch controls."""
 from playwright.sync_api import sync_playwright
 
-URL = "http://localhost:12001/"
+import sys
+URL = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:12001/"
 
 with sync_playwright() as pw:
     browser = pw.chromium.launch()
@@ -26,7 +27,7 @@ with sync_playwright() as pw:
         """async () => (await caches.keys()).join(',')"""))
     print("cached urls:", page.evaluate(
         """async () => {
-             const c = await caches.open('underworld-shell-v2');
+             const c = await caches.open('underworld-shell-v3');
              return (await c.keys()).map((r) => new URL(r.url).pathname).join(',');
            }"""))
 

@@ -1,7 +1,7 @@
 // Underworld Escape — offline-first shell.
 // The whole game is three files, so caching them makes the app work with no
 // network at all. Bump SHELL_CACHE whenever index.html changes.
-const SHELL_CACHE = 'underworld-shell-v2';
+const SHELL_CACHE = 'underworld-shell-v3';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-180.png'];
 
 self.addEventListener('install', (e) => {
