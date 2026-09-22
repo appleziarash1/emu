@@ -130,8 +130,12 @@ with sync_playwright() as pw:
       }
       return out;
     }""")
-    check("five distinct arms are available", len(ranges) == 5, [r["id"] for r in ranges])
-    check("arms have different reach", len({r["reach"] for r in ranges}) == 5,
+    # The six Hades arms plus the game's own War Hammer.
+    check("the full arm roster is available",
+          [r["id"] for r in ranges] == ["xiphos", "spear", "daggers", "hammer",
+                                        "shield", "bow", "rail"],
+          [r["id"] for r in ranges])
+    check("every arm has its own reach", len({r["reach"] for r in ranges}) == len(ranges),
           [r["reach"] for r in ranges])
 
     # 10. A connected controller replaces the on-screen controls instead of

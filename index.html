@@ -214,6 +214,27 @@
          font: 11px/1.5 ui-monospace, Menlo, monospace; color: #9cffb0; background: #000000b3;
          padding: 8px 10px; border-radius: 8px; white-space: pre; display: none; max-width: 92vw; overflow: auto; }
   #dbg.on { display: block; }
+
+  /* The House's tab row doubles as the market: a locked entry keeps its price
+     visible, so the screen reads as a shop rather than a dead end. */
+  .tab.on { background: #ffd4792e; border-color: #ffd47999; color: #ffe9a8; }
+  #houseBody, #aspectRow { display: grid; gap: 8px; justify-items: center;
+                           max-height: 46vh; overflow: auto; padding: 2px; }
+  .meta { width: min(460px, 88vw); text-align: left; padding: 10px 12px; border-radius: 12px;
+          border: 1px solid #ffffff24; background: #ffffff0d; color: #f3ecff; font-size: 13px;
+          display: flex; align-items: center; gap: 10px; }
+  .meta b { display: block; font-size: 14px; color: #ffe9a8; }
+  .meta span { display: block; font-size: 11.5px; color: #b9a7d6; margin-top: 2px; }
+  .meta .grow { flex: 1; }
+  .meta.picked { border-color: #ffd47999; background: #ffd47914; }
+  .meta.locked { opacity: .62; }
+  .meta button { appearance: none; border: 1px solid #ffffff2e; border-radius: 10px; cursor: pointer;
+                 padding: 7px 12px; font-size: 12px; font-weight: 700; color: #1a0f2b;
+                 background: linear-gradient(180deg, #ffe9a8, #e0a44e); white-space: nowrap; }
+  .meta button.ghost { background: #ffffff14; color: #f3ecff; font-weight: 600; }
+  .meta .price { color: #ffd479; font-weight: 800; font-size: 11px; }
+  .pips { letter-spacing: 2px; color: #ffd479; font-size: 12px; }
+
 </style>
 </head>
 <body>
@@ -288,6 +309,34 @@
   </div>
 
   <div class="overlay" id="menu">
+  <div class="overlay" id="house" hidden>
+    <h1 style="font-size:26px">The House of Hades</h1>
+    <p class="sub" id="metaLine" style="font-size:13px">
+      Titan Blood <b id="metaBlood">0</b> · Darkness <b id="metaDark">0</b> · <span id="heatLine">Heat 0</span>
+    </p>
+    <div class="row" id="houseTabs">
+      <button class="btn ghost tab" id="tabArm" type="button">Arms</button>
+      <button class="btn ghost tab" id="tabMirror" type="button">Mirror</button>
+      <button class="btn ghost tab" id="tabKeepsake" type="button">Keepsakes</button>
+      <button class="btn ghost tab" id="tabPact" type="button">Pact</button>
+    </div>
+    <p class="sub" id="houseSub"></p>
+    <div id="houseBody"></div>
+    <div class="row">
+      <button class="btn ghost" id="muteBtn" type="button">🔊 Sound on</button>
+      <button class="btn ghost" id="resetBtn" type="button">Reset progress</button>
+    </div>
+    <div class="row"><button class="btn ghost" id="houseBack" type="button">Back to the menu</button></div>
+  </div>
+
+  <div class="overlay" id="aspects" hidden>
+    <h1 style="font-size:26px">Choose an Aspect</h1>
+    <p class="sub" id="aspectSub"></p>
+    <div class="row" id="aspectRow"></div>
+    <div class="row"><button class="btn" id="aspectDone" type="button">Descend</button></div>
+    <div class="row"><button class="btn ghost" id="aspectBack" type="button">Back</button></div>
+  </div>
+
     <svg class="crest" viewBox="0 0 120 120" aria-hidden="true">
       <defs>
         <radialGradient id="halo" cx="50%" cy="42%" r="55%">
@@ -318,6 +367,7 @@
     </div>
     <div class="row">
       <button class="btn ghost" id="resumeBtn" type="button" hidden>Continue run</button>
+      <button class="btn ghost" id="houseBtn" type="button">The House</button>
       <button class="btn ghost" id="helpBtn" type="button">How to play</button>
     </div>
     <p class="sub" id="bestLine" style="font-size:12px"></p>
@@ -1098,18 +1148,296 @@
   // different depending on what is carried. Multipliers are applied to the
   // run's base damage, so boons keep working for every weapon.
   const WEAPONS = [
-    { id: 'xiphos', name: 'Xiphos', kind: 'melee', blurb: 'Balanced leaf blade. The all-rounder.',
+    { id: 'xiphos', name: 'Stygius', kind: 'melee', blurb: 'Balanced leaf blade. The all-rounder.',
       dmgMul: 1, reach: 62, cooldown: 0.26, swingTime: 0.18, assist: 26, knock: 0 },
-    { id: 'spear', name: 'Dory Spear', kind: 'melee', blurb: 'Long thrust. Hit from safety.',
+    { id: 'spear', name: 'Varatha', kind: 'melee', blurb: 'Long thrust. Hit from safety.',
       dmgMul: 0.95, reach: 92, cooldown: 0.34, swingTime: 0.15, assist: 30, thrust: true },
-    { id: 'daggers', name: 'Twin Fangs', kind: 'melee', blurb: 'Fast paired daggers. Low damage, high speed.',
+    { id: 'daggers', name: 'Malphon', kind: 'melee', blurb: 'Fast paired fists. Low damage, high speed.',
       dmgMul: 0.6, reach: 50, cooldown: 0.13, swingTime: 0.09, assist: 32, twin: true },
     { id: 'hammer', name: 'War Hammer', kind: 'melee', blurb: 'Slow, heavy, and it sends foes flying.',
       dmgMul: 2.0, reach: 70, cooldown: 0.6, swingTime: 0.26, assist: 34, knock: 320, heavy: true },
-    { id: 'bow', name: 'Apollo Bow', kind: 'ranged', blurb: 'Loose arrows from a distance.',
+    { id: 'shield', name: 'Aegis', kind: 'melee', blurb: 'A broad shield. It blocks as it bashes.',
+      dmgMul: 0.85, reach: 66, cooldown: 0.4, swingTime: 0.2, assist: 30, knock: 150, block: 1 },
+    { id: 'bow', name: 'Coronacht', kind: 'ranged', blurb: 'Loose arrows from a distance.',
       dmgMul: 0.9, reach: 420, cooldown: 0.4, swingTime: 0.16, assist: 60, bow: true,
       shots: 1, shotSpeed: 560, shotR: 5, shotLife: 1.1 },
+    { id: 'rail', name: 'Exagryph', kind: 'ranged', blurb: 'A rapid rail of fire.',
+      dmgMul: 0.55, reach: 460, cooldown: 0.22, swingTime: 0.12, assist: 66, bow: true,
+      shots: 1, shotSpeed: 700, shotR: 4, shotLife: 1.2 },
   ];
+  // ============================================================ aspects (07)
+  // Six arms, each with four aspects. An aspect is a run-long modifier bought
+  // with Titan Blood, chosen before the descent alongside the arm itself. Only
+  // one aspect is ever active, so the numbers are flat trades rather than a
+  // stack: the point is that one arm plays differently, not that a bought arm
+  // is strictly better.
+  const ARMS = [
+    { id: 'xiphos', arm: 'Stygius',   kind: 'Sword' },
+    { id: 'spear',  arm: 'Varatha',   kind: 'Spear' },
+    { id: 'shield',  arm: 'Aegis',     kind: 'Shield' },
+    { id: 'bow',     arm: 'Coronacht', kind: 'Bow' },
+    { id: 'daggers', arm: 'Malphon',   kind: 'Fists' },
+    { id: 'rail',    arm: 'Exagryph',  kind: 'Rail' },
+  ];
+
+  const ASPECTS = [
+    { id: 'zagreus',  arm: 'xiphos', name: 'Aspect of Zagreus',  cost: 0,  blurb: 'Balanced. Faster footwork and surer hands.',     mod: { speedMul: 1.08, cdMul: 0.92 } },
+    { id: 'nemesis',  arm: 'xiphos', name: 'Aspect of Nemesis',  cost: 5,  blurb: 'Relentless. Faster blows, lighter wounds.',      mod: { cdMul: 0.72, dmgMul: 0.88 } },
+    { id: 'x_poseidon', arm: 'xiphos', name: 'Aspect of Poseidon', cost: 10, blurb: 'The blade throws its targets back.',           mod: { knockAdd: 230, cdMul: 1.05 } },
+    { id: 'arthur',   arm: 'xiphos', name: 'Aspect of Arthur',   cost: 15, blurb: 'A heavy holy blade. Slower, and it cuts deep.',  mod: { dmgMul: 1.55, cdMul: 1.28, hpMul: 1.1 } },
+    { id: 'v_zagreus', arm: 'spear', name: 'Aspect of Zagreus',  cost: 0,  blurb: 'Balanced. A touch more reach.',                  mod: { reachAdd: 8, cdMul: 0.94 } },
+    { id: 'achilles', arm: 'spear', name: 'Aspect of Achilles',  cost: 5,  blurb: 'The thrust overreaches and hits far harder.',    mod: { dmgMul: 1.3, cdMul: 1.12 } },
+    { id: 's_hades',  arm: 'spear', name: 'Aspect of Hades',     cost: 10, blurb: 'A crushing throw that flings foes away.',        mod: { knockAdd: 260 } },
+    { id: 'guan_yu',  arm: 'spear', name: 'Aspect of Guan Yu',   cost: 15, blurb: 'A long, brutal sweep. Wide, slow, punishing.',   mod: { dmgMul: 1.4, reachAdd: 22, cdMul: 1.3 } },
+    { id: 'a_zagreus', arm: 'shield', name: 'Aspect of Zagreus', cost: 0,  blurb: 'Balanced. Steadier guard.',                      mod: { cdMul: 0.95 } },
+    { id: 'chaos',    arm: 'shield', name: 'Aspect of Chaos',    cost: 5,  blurb: 'The shield strikes for the wound it takes.',     mod: { dmgMul: 1.28, hpMul: 0.88 } },
+    { id: 'g_zeus',   arm: 'shield', name: 'Aspect of Zeus',     cost: 10, blurb: 'Faster and branching. The guard turns aside.',   mod: { cdMul: 0.78, dmgMul: 0.92, shieldBase: 1 } },
+    { id: 'beowulf',  arm: 'shield', name: 'Aspect of Beowulf',  cost: 15, blurb: 'A huge, slow shield. It answers with force.',    mod: { dmgMul: 1.5, cdMul: 1.24, knockAdd: 180 } },
+    { id: 'c_zagreus', arm: 'bow', name: 'Aspect of Zagreus',    cost: 0,  blurb: 'Balanced. Quicker nocking.',                     mod: { cdMul: 0.95 } },
+    { id: 'hera',     arm: 'bow', name: 'Aspect of Hera',        cost: 5,  blurb: 'Slower draw, far heavier arrows.',               mod: { dmgMul: 1.38, cdMul: 1.18 } },
+    { id: 'chiron',   arm: 'bow', name: 'Aspect of Chiron',      cost: 10, blurb: 'A tight volley of two arrows.',                  mod: { shotsAdd: 1, cdMul: 1.05 } },
+    { id: 'rama',     arm: 'bow', name: 'Aspect of Rama',        cost: 15, blurb: 'A hunting bow. Three shafts, each lighter.',     mod: { shotsAdd: 2, dmgMul: 0.8 } },
+    { id: 'm_zagreus', arm: 'daggers', name: 'Aspect of Zagreus',  cost: 0,  blurb: 'Balanced. The hands move first.',                mod: { speedMul: 1.06, cdMul: 0.95 } },
+    { id: 'talos',    arm: 'daggers', name: 'Aspect of Talos',     cost: 5,  blurb: 'Magnetic hands drag foes into reach.',           mod: { knockAdd: 140, dmgMul: 1.1 } },
+    { id: 'f_demeter', arm: 'daggers', name: 'Aspect of Demeter',  cost: 10, blurb: 'Cold knuckles. Faster than flesh should be.',    mod: { cdMul: 0.74, dmgMul: 0.9 } },
+    { id: 'gilgamesh', arm: 'daggers', name: 'Aspect of Gilgamesh', cost: 15, blurb: 'Heavy gauntlets. Slow, and they end fights.',   mod: { dmgMul: 1.6, cdMul: 1.3 } },
+    { id: 'e_zagreus', arm: 'rail', name: 'Aspect of Zagreus',   cost: 0,  blurb: 'Balanced. The rail cycles cleanly.',             mod: { cdMul: 0.95 } },
+    { id: 'eris',     arm: 'rail', name: 'Aspect of Eris',       cost: 5,  blurb: 'A wilder cycle, more damage a shot.',            mod: { dmgMul: 1.25, cdMul: 1.08 } },
+    { id: 'hestia',   arm: 'rail', name: 'Aspect of Hestia',     cost: 10, blurb: 'Slower fire, and each shot bites.',              mod: { dmgMul: 1.35, cdMul: 1.22 } },
+    { id: 'lucifer',  arm: 'rail', name: 'Aspect of Lucifer',    cost: 15, blurb: 'A stream of fire, a little damage each.',        mod: { cdMul: 0.55, dmgMul: 0.72 } },
+  ];
+
+  // Titan Blood is the aspect currency. It comes home from boss kills, and the
+  // aspect bought is permanent, so a grind always pays forward.
+  const BLOOD_KEY = 'ue_blood_v1';
+  const BLOOD_BOUGHT_KEY = 'ue_bought_v1';
+
+  function readJson(key, fallback) {
+    try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; }
+    catch (e) { return fallback; }
+  }
+  function writeJson(key, value) {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
+  }
+
+  let metaBlood = 0;
+  let boughtAspects = {};
+  try {
+    metaBlood = +(localStorage.getItem(BLOOD_KEY) || 0) || 0;
+    boughtAspects = readJson(BLOOD_BOUGHT_KEY, {}) || {};
+  } catch (e) {}
+
+  function bloodSave() { try { localStorage.setItem(BLOOD_KEY, String(metaBlood)); } catch (e) {} }
+  function boughtSave() { writeJson(BLOOD_BOUGHT_KEY, boughtAspects); }
+
+  // The aspect in force for this run. `null` is the arm's own base form.
+  let chosenAspect = null;
+  function aspectDef(id) { return ASPECTS.find((a) => a.id === id) || null; }
+  function aspectUnlocked(a) { return !!a && (a.cost === 0 || !!boughtAspects[a.id]); }
+  function aspectsOf(armId) { return ASPECTS.filter((a) => a.arm === armId); }
+  function aspectMod() {
+    const a = chosenAspect ? aspectDef(chosenAspect) : null;
+    return a ? (a.mod || {}) : {};
+  }
+
+  // The aspect folded into the arm's own body. Kept separate from the run's
+  // numbers so a resumed run can rebuild the same weapon without re-applying the
+  // multipliers that the save already carries.
+  function applyAspectWeapon(weapon, a) {
+    const m = (a && a.mod) || {};
+    return Object.assign({}, weapon, {
+      cooldown: weapon.cooldown * (m.cdMul || 1),
+      shots: (weapon.shots || 0) + (m.shotsAdd || 0) || weapon.shots,
+    });
+  }
+
+  // Fold the aspect into the base arm once, when the run is built. Multipliers
+  // land on the run's numbers, so the boons that scale `state.dmg` keep working
+  // on top of whatever the aspect did.
+  function applyAspect(s, weapon) {
+    const m = aspectMod();
+    s.dmg   = 18 * weapon.dmgMul * (m.dmgMul || 1);
+    s.reach = weapon.reach + (m.reachAdd || 0);
+    s.knock = (weapon.knock || 0) + (m.knockAdd || 0);
+    s.speed = 205 * (m.speedMul || 1);
+    s.aspectCdMul = (m.cdMul || 1);
+    s.aspectShots = m.shotsAdd || 0;
+    s.aspectShield = m.shieldBase || 0;
+    s.aspectHpMul = m.hpMul || 1;
+    s.weapon = applyAspectWeapon(weapon, aspectDef(chosenAspect));
+    if (m.shieldBase) { s.shieldMax = m.shieldBase; s.shield = m.shieldBase; }
+  }
+
+  // Buy an aspect. Returns false when the purse is short, so the UI can refuse
+  // the click rather than letting Titan Blood go negative. Shopping reuses the
+  // same chooser a free pick uses, so the cost never changes the interaction.
+  function buyAspect(id) {
+    const a = aspectDef(id);
+    if (!a || aspectUnlocked(a)) return true;
+    if (metaBlood < a.cost) { toast('Not enough Titan Blood — ' + a.cost + ' needed'); return false; }
+    metaBlood -= a.cost;
+    boughtAspects[a.id] = 1;
+    bloodSave(); boughtSave();
+    renderAspectPicker();
+    if (houseScreen === 'aspects') renderHouse();
+    return true;
+  }
+
+  // ===================================================== mirror of night (22)
+  // Permanent upgrades bought with Darkness. Each talent has ranks, and a rank
+  // is a small permanent step, so the mirror is the long arc that makes deeper
+  // runs survivable.
+  const MIRROR = [
+    { id: 'thick',     name: 'Thick Skin',         max: 5, cost: (r) => 5 + r * 5,   blurb: 'More life.',                        per: { maxHpAdd: 10 } },
+    { id: 'power',     name: 'Privileged Status',  max: 5, cost: (r) => 6 + r * 6,   blurb: 'More damage.',                      per: { dmgMul: 0.04 } },
+    { id: 'swift',     name: 'Swift Runner',       max: 5, cost: (r) => 4 + r * 4,   blurb: 'Faster on your feet.',              per: { speedMul: 0.02 } },
+    { id: 'dash',      name: 'Greater Reflex',     max: 3, cost: (r) => 8 + r * 8,   blurb: 'A shorter dash cooldown.',          per: { dashCdMul: -0.06 } },
+    { id: 'shadow',    name: 'Shadow Presence',    max: 3, cost: (r) => 8 + r * 8,   blurb: 'A longer reach.',                   per: { reachAdd: 3 } },
+    { id: 'fated',     name: 'Fated Authority',    max: 3, cost: (r) => 10 + r * 10, blurb: 'Powers recharge faster.',           per: { splCdMul: -0.05, specCdMul: -0.05 } },
+    { id: 'darkregen', name: 'Dark Regeneration',  max: 3, cost: (r) => 12 + r * 12, blurb: 'Life comes back between chambers.', per: { healAdd: 6 } },
+    { id: 'obol',      name: 'Golden Touch',       max: 3, cost: (r) => 6 + r * 6,   blurb: 'Foes drop more obols.',             per: { obolMul: 0.12 } },
+    { id: 'bloodrite', name: 'Blood Rites',        max: 3, cost: (r) => 15 + r * 15, blurb: 'Titan Blood from each boss.',       per: { bloodAdd: 1 } },
+  ];
+
+  const MIRROR_KEY = 'ue_mirror_v1';
+  let mirrorRanks = {};
+  try { mirrorRanks = readJson(MIRROR_KEY, {}) || {}; } catch (e) {}
+  function mirrorSave() { writeJson(MIRROR_KEY, mirrorRanks); }
+  function mirrorMaxOf(id) { const t = MIRROR.find((x) => x.id === id); return t ? t.max : 0; }
+  function mirrorRank(id) { return Math.max(0, Math.min(mirrorMaxOf(id), +(mirrorRanks[id] || 0))); }
+  function mirrorCost(id, rank) { const t = MIRROR.find((x) => x.id === id); return t ? t.cost(rank) : 0; }
+
+  function buyMirror(id) {
+    const t = MIRROR.find((x) => x.id === id);
+    if (!t) return false;
+    const r = mirrorRank(id);
+    if (r >= t.max) return false;
+    const cost = mirrorCost(id, r);
+    if (metaDarkness < cost) { toast('Not enough Darkness — ' + cost + ' needed'); return false; }
+    metaDarkness -= cost;
+    mirrorRanks[id] = r + 1;
+    mirrorSave(); darknessSave();
+    refreshMeta();
+    return true;
+  }
+
+  // The mirror as a flat set of numbers, folded into a run when it starts.
+  function mirrorTotals() {
+    const out = { maxHpAdd: 0, dmgMul: 1, speedMul: 1, dashCdMul: 1, reachAdd: 0,
+                  splCdMul: 1, specCdMul: 1, healAdd: 0, obolMul: 1, bloodAdd: 0 };
+    for (const t of MIRROR) {
+      const r = mirrorRank(t.id);
+      if (!r) continue;
+      const per = t.per || {};
+      for (const k in per) {
+        const v = per[k] * r;
+        if (k === 'dmgMul' || k === 'speedMul' || k === 'dashCdMul' || k === 'splCdMul' || k === 'specCdMul' || k === 'obolMul') out[k] *= (1 + v);
+        else out[k] += v;
+      }
+    }
+    return out;
+  }
+
+  // Darkness is the mirror's currency. Foes drop it; a run pays out the rest.
+  const DARKNESS_KEY = 'ue_darkness_v1';
+  let metaDarkness = 0;
+  try { metaDarkness = +(localStorage.getItem(DARKNESS_KEY) || 0) || 0; } catch (e) {}
+  function darknessSave() { try { localStorage.setItem(DARKNESS_KEY, String(metaDarkness)); } catch (e) {} }
+
+  // ============================================================ keepsakes (23)
+  // One keepsake equipped at a time, chosen in the House before the descent. It
+  // is a whole-run passive, so it is deliberately weaker than a boon but always
+  // with you.
+  const KEEPSAKES = [
+    { id: 'none',     name: 'No keepsake',       cost: 0, blurb: 'Travel light.',                    mod: {} },
+    { id: 'cerberus', name: 'Cerberus Collar',   cost: 0, blurb: 'More life for the whole descent.', mod: { maxHpAdd: 40 } },
+    { id: 'olive',    name: 'Owl Pendant',       cost: 0, blurb: 'More Titan Blood from each boss.',  mod: { bloodAdd: 1 } },
+    { id: 'skull',    name: 'Pierced Butterfly', cost: 0, blurb: 'More damage, less life.',           mod: { dmgMul: 1.12, maxHpAdd: -12 } },
+    { id: 'adamant',  name: 'Adamant Bracer',    cost: 0, blurb: 'Begin every run with guard.',       mod: { shieldBase: 1 } },
+    { id: 'fur',      name: 'Frostbitten Horn',  cost: 0, blurb: 'Foes drop more obols.',             mod: { obolMul: 1.25 } },
+  ];
+
+  const KEEPSAKE_KEY = 'ue_keepsake_v1';
+  let equippedKeepsake = 'none';
+  try { equippedKeepsake = localStorage.getItem(KEEPSAKE_KEY) || 'none'; } catch (e) {}
+  function keepsakeDef(id) { return KEEPSAKES.find((k) => k.id === id) || KEEPSAKES[0]; }
+  function keepsakeMod() { return keepsakeDef(equippedKeepsake).mod || {}; }
+  function equipKeepsake(id) {
+    if (!keepsakeDef(id)) return;
+    equippedKeepsake = id;
+    try { localStorage.setItem(KEEPSAKE_KEY, id); } catch (e) {}
+    renderHouse();
+  }
+
+  // ================================================== pact of punishment (25)
+  // Heat makes the descent harder, and each run's Heat is the score carried
+  // back. Conditions are worth points; the total is the Heat of the run.
+  const PACTS = [
+    { id: 'hardLabour',   name: 'Hard Labour',           max: 3, blurb: 'Foes hit harder.' },
+    { id: 'lasting',      name: 'Lasting Consequences',  max: 3, blurb: 'You start with less life.' },
+    { id: 'convenience',  name: 'Convenience Fee',       max: 3, blurb: 'Shops charge more.' },
+    { id: 'jury',         name: 'Jury Summons',          max: 3, blurb: 'More foes in every chamber.' },
+    { id: 'calisthenics', name: 'Calisthenics',          max: 3, blurb: 'Bosses have more life.' },
+    { id: 'tight',        name: 'Tight Deadline',        max: 3, blurb: 'Foes are faster.' },
+  ];
+
+  const HEAT_KEY = 'ue_heat_v1';
+  let pactRanks = {};
+  try { pactRanks = readJson(HEAT_KEY, {}) || {}; } catch (e) {}
+  function pactSave() { writeJson(HEAT_KEY, pactRanks); }
+  function pactMaxOf(id) { const t = PACTS.find((x) => x.id === id); return t ? t.max : 0; }
+  function pactRank(id) { return Math.max(0, Math.min(pactMaxOf(id), +(pactRanks[id] || 0))); }
+  function heatTotal() { return PACTS.reduce((n, t) => n + pactRank(t.id), 0); }
+  function setPact(id, rank) {
+    if (!PACTS.some((x) => x.id === id)) return;
+    pactRanks[id] = Math.max(0, Math.min(pactMaxOf(id), rank));
+    pactSave();
+    renderHouse();
+  }
+  function pactMod() {
+    return {
+      foeDmgMul: 1 + pactRank('hardLabour') * 0.18,
+      startHpMul: 1 - pactRank('lasting') * 0.15,
+      shopMul: 1 + pactRank('convenience') * 0.25,
+      foeCountAdd: pactRank('jury'),
+      bossHpMul: 1 + pactRank('calisthenics') * 0.22,
+      foeSpeedMul: 1 + pactRank('tight') * 0.12,
+    };
+  }
+
+  // =============================================================== hub (04)
+  // The House is the meta screen: the arm and aspect, the keepsake, the mirror
+  // and the pact. Everything on it is bought with currency that outlives a run,
+  // so dying still moves the account forward.
+  let houseScreen = 'house';
+
+  function houseOpen(screen) {
+    houseScreen = screen || 'house';
+    mode = 'house';
+    refreshMeta();
+    renderHouse();
+    show('house');
+  }
+  function houseClose() {
+    hide('house');
+    mode = 'menu';
+    refreshMeta();
+    renderHouse();
+    refreshResume();
+    show('menu');
+  }
+
+  // The currencies are shown wherever the House is, so a purchase never has to
+  // guess at the balance.
+  function refreshMeta() {
+    const b = document.getElementById('metaBlood');
+    const d = document.getElementById('metaDark');
+    if (b) b.textContent = metaBlood;
+    if (d) d.textContent = metaDarkness;
+    const hl = document.getElementById('heatLine');
+    if (hl) hl.textContent = 'Heat ' + heatTotal();
+  }
+
 
   // ------------------------------------------------------------- world/state
   let state = null;
@@ -1137,8 +1465,15 @@
       se: { attack: {}, special: {}, spell: {}, dash: {} },
       xp: 0, level: 1, obols: 0,
       depth: 1, kills: 0, boons: [], takenIds: {}, offer: null, tAcc: 0, bossShopDepth: 0, pendingRarity: null,
+      // The permanent choices ride on the run so a resumed descent keeps the
+      // aspect, keepsake, mirror ranks and Heat it was begun with.
+      aspectId: chosenAspect || null, keepsake: equippedKeepsake, heat: heatTotal(),
+      bloodEarned: 0, bloodBonus: 0, bloodAdd: 0, darknessEarned: 0,
+      obolMul: 1, healAdd: 0, shopMul: 1, foeDmgMul: 1, foeCountAdd: 0,
+      bossHpMul: 1, foeSpeedMul: 1, aspectCdMul: 1, aspectShots: 0,
+      aspectShield: 0, aspectHpMul: 1,
     };
-    state.hp = state.maxHp;
+    applyMetaToRun();
     newRoom();
   }
 
@@ -1390,7 +1725,7 @@
       // A realm's roster is denser the later it sits. Styx and the Surface are
       // meant to feel crowded: the rats come in packs and the heralds call more.
       const crowding = 1 + realmIndex(depth) * 0.28;
-      const n = clamp(Math.round((3 + depth * 0.9) * clamp(area, 1, 2.2) * crowding), 3, 26);
+      const n = clamp(Math.round((3 + depth * 0.9) * clamp(area, 1, 2.2) * crowding) + (state.foeCountAdd || 0), 3, 30);
       for (let i = 0; i < n; i++) spawnEnemy(depth);
     }
   }
@@ -1430,8 +1765,8 @@
 
     const arche = rollFoe(realm);
     const hp = Math.round((arche.hp + over * 9) * (1 + idx * 0.22));
-    const dmg = (arche.dmg + over * 1.1) * (1 + idx * 0.16);
-    const speed = arche.speed + over * 2.6;
+    const dmg = (arche.dmg + over * 1.1) * (1 + idx * 0.16) * (state.foeDmgMul || 1);
+    const speed = (arche.speed + over * 2.6) * (state.foeSpeedMul || 1);
     const e = { kind: arche.kind, x, y, r: arche.r, hp, max: hp, dmg, speed,
                 color: arche.color, atk: 0, burn: 0, tier: idx };
     if (arche.shoot) e.shoot = rand(arche.shoot[0], arche.shoot[1]);
@@ -1472,6 +1807,7 @@
     const def = BOSSES[realm.boss] || BOSSES.megaera;
     room.bossName = def.name;
     room.bossKit = def.kit;
+    sfx('boss');
     const spot = { x: room.w / 2, y: room.inset + 70 };
     // The big ones are far too wide to fit between the stones, so they are placed
     // clear of them rather than being made to squeeze past.
@@ -1482,7 +1818,7 @@
     // because a boss that is both 625x tougher and 625x harder-hitting stops
     // being a fight and starts being a wall.
     const scale = Math.pow(5, Math.max(0, tier - 1));
-    const BASE_HP = 340 + 5 * 95;
+    const BASE_HP = (340 + 5 * 95) * (state.bossHpMul || 1);
     // The encounter's budget is shared between the boss's bodies; a pair splits
     // it, so two champions are one fight rather than two stacked on top.
     def.parts.forEach((part, i) => {
@@ -1512,6 +1848,7 @@
     if (state.swingCd > 0) return;
     state.swingCd = w.cooldown;
     state.swingT = w.swingTime;
+    sfx('swing');
     const range = w.reach;
 
     let lx = p.hx || 0, ly = p.hy || 0;
@@ -1638,6 +1975,7 @@
     if (state.splCd > 0) return false;
     const p = state.player;
     state.splCd = state.splCdMax;
+    sfx('spell');
     const se = state.se.spell || {};
     const R = se.novaShield ? 200 : 170;
     room.projectiles.push({ x: p.x, y: p.y, t: 0.42, kind: 'nova', r: R });
@@ -1708,6 +2046,7 @@
     if (state.specCd > 0) return false;
     const p = state.player;
     state.specCd = state.specCdMax;
+    sfx('special');
     let lx = p.faceX, ly = p.faceY;
     // Facing is (0,1) until the hero first moves. A plain `faceY || 1` would turn
     // a due-east aim (faceY exactly 0) into a 45-degree throw, so check for a
@@ -1767,6 +2106,7 @@
     e.hp -= amount;
     e.burn = 0.12;
     e.hurt = 0.12;
+    sfx('hit');
     floater(e.x + rand(-6, 6), e.y - e.r, (crit ? '✦' : '') + Math.round(amount), crit);
     if (state.slow) e.slowed = 1.6;
     const pushPow = (state.knock || 0) + (state.weapon.knock || 0);
@@ -1826,10 +2166,15 @@
     }
     e.dead = true;
     state.kills++;
+    sfx(e.kind === 'boss' ? 'boss' : 'kill');
+    if (e.kind === 'boss') { state.bloodEarned = (state.bloodEarned || 0) + 1 + (state.bloodAdd || 0); }
     // Later realms pay better, which is the counterweight to their difficulty.
     const worth = e.kind === 'boss' ? 60 : e.max > 80 ? 8 : e.max > 45 ? 5 : 4;
     state.xp += worth;
-    state.obols += e.kind === 'boss' ? 120 : worth * 2;
+    state.obols += Math.round((e.kind === 'boss' ? 120 : worth * 2) * (state.obolMul || 1));
+    // Darkness is the mirror's currency: a steady trickle from every foe, more
+    // from a boss, so the mirror fills even on a run that ends early.
+    state.darknessEarned += e.kind === 'boss' ? 12 : 1;
     if (state.mist) room.mist.push({ x: e.x, y: e.y, r: 46, t: 4.5 });
     if ((state.se.attack || {}).fume) room.mist.push({ x: e.x, y: e.y, r: 44, t: 3.5 });
     // The realm's farewell: what a body does when it comes apart.
@@ -1905,6 +2250,7 @@
     }
     state.hp -= amount;
     state.inv = 0.75;
+    sfx('hurt');
     floater(state.player.x, state.player.y - 22, '-' + Math.round(amount), false);
     if (state.hp <= 0) { state.hp = 0; die(); }
   }
@@ -1915,10 +2261,12 @@
     clearSave();
     const best = Math.max(+(localStorage.getItem('ue_best') || 0), state.depth);
     try { localStorage.setItem('ue_best', String(best)); } catch (e) {}
+    awardBlood();
     document.getElementById('deadStats').innerHTML =
       'You reached <b>depth ' + state.depth + '</b>.<br />' +
       'Foes felled: ' + state.kills + ' · Boons: ' + state.boons.length + '<br />' +
-      'Best depth ever: ' + best;
+      'Titan Blood earned: ' + (state.bloodEarned || 0) + ' · Darkness: ' + (state.darknessEarned || 0) + '<br />' +
+      'Heat: ' + (state.heat || 0) + ' · Best depth ever: ' + best;
     show('dead');
     document.getElementById('hud').classList.remove('on');
     hideTouch();
@@ -1931,10 +2279,12 @@
     const best = Math.max(+(localStorage.getItem('ue_best') || 0), state.depth);
     try { localStorage.setItem('ue_best', String(best)); } catch (e) {}
     document.querySelector('#dead h1').textContent = 'You escaped the Underworld';
+    awardBlood();
     document.getElementById('deadStats').innerHTML =
       'You walked out through the gate at <b>depth ' + state.depth + '</b>.<br />' +
       'Foes felled: ' + state.kills + ' · Boons taken: ' + state.boons.length + '<br />' +
-      'Best depth ever: ' + best;
+      'Titan Blood earned: ' + (state.bloodEarned || 0) + ' · Darkness: ' + (state.darknessEarned || 0) + '<br />' +
+      'Heat: ' + (state.heat || 0) + ' · Best depth ever: ' + best;
     document.querySelector('#dead .btn').textContent = 'Descend again';
     show('dead');
     document.getElementById('hud').classList.remove('on');
@@ -1963,6 +2313,9 @@
     hide('corridor');
     state.depth = corridor.depth;
     if (state.shieldMax > 0) state.shield = state.shieldMax;
+    // The mirror's Dark Regeneration gives back a little life on every new
+    // chamber, which is what makes a deep run survivable.
+    if (state.healAdd) state.hp = Math.min(state.maxHp, state.hp + state.healAdd);
     newRoom();
     document.getElementById('hud').classList.add('on');
     showTouch();
@@ -2505,6 +2858,7 @@
     if (wantDash && state.dashCd <= 0 && (ml > 0.05 || p.faceY)) {
       pressBuf.dash = 0;
       state.dashT = 0.16; state.dashCd = state.dashCdMax; state.inv = Math.max(state.inv, 0.22);
+      sfx('dash');
       const dx = ml > 0.05 ? mx / ml : p.faceX, dy = ml > 0.05 ? my / ml : p.faceY;
       p.kx = dx * state.dashPow; p.ky = dy * state.dashPow;
       // Every dashing frame sweeps for foes to run through, but the hit list is
@@ -2959,6 +3313,7 @@
     state.takenIds[g.id] = (state.takenIds[g.id] || 0) + 1;
     state.pendingPower = null;
     state.pendingRarity = null;
+    sfx('boon');
     hide('slots');
     hide('cards');
     mode = 'playing';
@@ -2989,15 +3344,16 @@
     body.innerHTML = '';
     for (const item of SHOP_ITEMS) {
       const g = GODS.find((x) => x.id === item.id);
+      const price = Math.round(item.price * (state.shopMul || 1));
       const el = document.createElement('button');
-      const poor = state.obols < item.price;
+      const poor = state.obols < price;
       el.className = 'shopItem' + (poor ? ' poor' : '');
       el.type = 'button';
       el.innerHTML = '<b>' + g.god + '</b><span>' + g.theme + '</span>' +
-        '<span class="price">' + item.price + ' obols</span>';
+        '<span class="price">' + price + ' obols</span>';
       el.addEventListener('click', () => {
-        if (state.obols < item.price) { toast('Not enough obols'); return; }
-        state.obols -= item.price;
+        if (state.obols < price) { toast('Not enough obols'); return; }
+        state.obols -= price;
         hide('shop');
         // A bought favour is rolled like a dropped one, so the market is a real
         // alternative to clearing a chamber rather than a fixed normal-tier sink.
@@ -3056,11 +3412,15 @@
   // foes are written; everything else (the road, the torches, the stones) is
   // rebuilt from the seed, which keeps the save small.
   const SAVE_KEY = 'ue_run_v1';
-  const SAVE_VERSION = 2;
+  const SAVE_VERSION = 3;
   const SAVE_FIELDS = ['hp', 'maxHp', 'dmg', 'speed', 'reach', 'knock', 'arc', 'slow',
                        'mist', 'blast', 'shield', 'shieldMax', 'dashPow', 'dashCdMax',
                        'splCdMax', 'specCdMax', 'slots', 'se', 'pendingPower', 'pendingRarity',
-                       'xp', 'level', 'obols', 'depth', 'kills', 'boons', 'takenIds', 'bossShopDepth'];
+                       'xp', 'level', 'obols', 'depth', 'kills', 'boons', 'takenIds', 'bossShopDepth',
+                       'aspectId', 'keepsake', 'heat', 'bloodEarned', 'bloodBonus', 'bloodAdd',
+                       'darknessEarned', 'obolMul', 'healAdd', 'shopMul', 'foeDmgMul',
+                       'foeCountAdd', 'bossHpMul', 'foeSpeedMul', 'aspectCdMul', 'aspectShots',
+                       'aspectShield', 'aspectHpMul'];
   // A save every few seconds, plus one at the moment the app is hidden, means a
   // run is at most a couple of blows old. Boon effects live in the saved numbers,
   // so nothing has to be re-applied on the way back in.
@@ -3142,6 +3502,12 @@
     cam.scale = clamp(Math.min(VW, VH) / 430, 1, 1.9);
     state = { weapon: WEAPONS.find((w) => w.id === data.weapon) };
     for (const k of SAVE_FIELDS) state[k] = data[k];
+    // The aspect reshapes the arm, so the saved weapon is rebuilt with the saved
+    // aspect before the run's saved numbers are trusted.
+    if (data.aspectId) {
+      const a = aspectDef(data.aspectId);
+      if (a && a.arm === data.weapon) state.weapon = applyAspectWeapon(state.weapon, a);
+    }
     state.takenIds = data.takenIds || {};
     state.boons = data.boons || [];
     state.offer = data.offer || null;
@@ -5347,12 +5713,95 @@
   window.addEventListener('pagehide', () => { if (mode === 'playing') saveRun(); });
   window.addEventListener('blur', () => { if (mode === 'playing') saveRun(); });
 
+  // ============================================================== audio (29)
+  // Synthesised effects rather than samples: the whole game is one file, and a
+  // sample bank would dwarf it. The AudioContext is created lazily on the first
+  // input, so autoplay policies never block a sound the player did not ask for.
+  const SFX = {
+    muted: false, ctx: null,
+    parts: {
+      swing:   { type: 'triangle', f0: 320, f1: 170, dur: 0.10, gain: 0.05 },
+      hit:     { type: 'square',   f0: 180, f1: 70,  dur: 0.09, gain: 0.06 },
+      kill:    { type: 'sawtooth', f0: 240, f1: 60,  dur: 0.22, gain: 0.07 },
+      hurt:    { type: 'square',   f0: 150, f1: 55,  dur: 0.20, gain: 0.07 },
+      spell:   { type: 'sine',     f0: 520, f1: 180, dur: 0.28, gain: 0.06 },
+      special: { type: 'triangle', f0: 700, f1: 260, dur: 0.22, gain: 0.05 },
+      dash:    { type: 'sine',     f0: 420, f1: 900, dur: 0.14, gain: 0.04 },
+      boon:    { type: 'sine',     f0: 660, f1: 990, dur: 0.30, gain: 0.05 },
+      boss:    { type: 'sawtooth', f0: 90,  f1: 45,  dur: 0.55, gain: 0.08 },
+    },
+    unlock() {
+      if (this.muted || this.ctx) return;
+      try {
+        const C = window.AudioContext || window.webkitAudioContext;
+        if (C) this.ctx = new C();
+      } catch (e) { this.muted = true; }
+    },
+    play(name) {
+      if (this.muted) return;
+      this.unlock();
+      const p = this.parts[name];
+      if (!p) return;
+      const ctx = this.ctx;
+      if (!ctx) return;
+      try {
+        if (ctx.state === 'suspended') ctx.resume();
+        const t = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = p.type;
+        osc.frequency.setValueAtTime(p.f0, t);
+        osc.frequency.exponentialRampToValueAtTime(Math.max(20, p.f1), t + p.dur);
+        gain.gain.setValueAtTime(p.gain, t);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t + p.dur);
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.start(t); osc.stop(t + p.dur + 0.02);
+      } catch (e) { this.muted = true; }
+    },
+  };
+  // `sfx` never throws and never plays before the player has interacted, so a
+  // headless suite that calls the combat helpers stays silent rather than
+  // failing on a missing audio device.
+  function sfx(name) { try { SFX.play(name); } catch (e) {} }
+
+  // The sound follows the same entry points the game already has, so no new
+  // input path is introduced for it.
+  window.addEventListener('pointerdown', () => SFX.unlock(), { once: true });
+  window.addEventListener('keydown', () => SFX.unlock(), { once: true });
+
+  // A small mute control, remembered across sessions, so the effects can be
+  // turned off without leaving the page.
+  const MUTE_KEY = 'ue_muted_v1';
+  try { SFX.muted = localStorage.getItem(MUTE_KEY) === '1'; } catch (e) {}
+  function applyMute() {
+    const b = document.getElementById('muteBtn');
+    if (b) b.textContent = SFX.muted ? '🔇 Sound off' : '🔊 Sound on';
+    try { localStorage.setItem(MUTE_KEY, SFX.muted ? '1' : '0'); } catch (e) {}
+  }
+  function toggleMute() { SFX.muted = !SFX.muted; applyMute(); if (!SFX.muted) sfx('boon'); }
+
+  // ========================================================= housekeeping
+  // Clearing the account is the only way to wipe the permanent progress, so it
+  // is kept behind one button in the House rather than scattered across keys.
+  function resetMeta() {
+    metaBlood = 0; metaDarkness = 0; boughtAspects = {}; mirrorRanks = {}; pactRanks = {};
+    equippedKeepsake = 'none'; chosenAspect = null;
+    bloodSave(); boughtSave(); mirrorSave(); darknessSave(); pactSave();
+    try {
+      localStorage.removeItem(KEEPSAKE_KEY);
+      localStorage.removeItem('ue_aspect_pick_v1');
+    } catch (e) {}
+    refreshMeta(); renderHouse(); renderAspectLine();
+    toast('The House is bare again');
+  }
+
   try {
     const best = localStorage.getItem('ue_best');
     if (best) document.getElementById('bestLine').textContent = 'Best depth so far: ' + best;
-    document.getElementById('buildLine').textContent = 'art build 15';
+    document.getElementById('buildLine').textContent = 'art build 16';
   } catch (e) {}
   refreshResume();
+  initMeta();
 
   // Debug snapshot for automated checks (see ?debug=1).
   if (DBG) {
@@ -5369,6 +5818,242 @@
 
   // Face south-east at boot so the canvas shows something before the first move.
   requestAnimationFrame((t) => { lastT = t; frame(t); });
+  // ------------------------------------------------------------- the House
+  // One row builder for every meta list, so the mirror, the keepsakes and the
+  // pact all read the same way: a title, a line of explanation, and a control.
+  function metaRow(opts) {
+    const el = document.createElement('div');
+    el.className = 'meta' + (opts.cls ? ' ' + opts.cls : '');
+    const grow = document.createElement('div');
+    grow.className = 'grow';
+    grow.innerHTML = '<b>' + opts.title + '</b><span>' + (opts.sub || '') + '</span>';
+    el.appendChild(grow);
+    if (opts.pips) {
+      const p = document.createElement('div');
+      p.className = 'pips';
+      p.textContent = opts.pips;
+      el.appendChild(p);
+    }
+    if (opts.right) el.appendChild(opts.right);
+    return el;
+  }
+
+  function metaButton(label, cls, onClick) {
+    const b = document.createElement('button');
+    if (cls) b.className = cls;
+    b.type = 'button';
+    b.textContent = label;
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  // The menu's one-line summary of what is carried, so the choice is visible
+  // without opening the House.
+  function renderAspectLine() {
+    const w = WEAPONS.find((x) => x.id === chosenWeapon) || WEAPONS[0];
+    const a = aspectDef(chosenAspect);
+    const k = keepsakeDef(equippedKeepsake);
+    const parts = [w.name];
+    if (a) parts.push(a.name.replace('Aspect of ', ''));
+    if (k.id !== 'none') parts.push(k.name);
+    if (heatTotal() > 0) parts.push('Heat ' + heatTotal());
+    const el = document.getElementById('armLine');
+    if (el) el.innerHTML = 'Carrying: <b>' + parts.join(' · ') + '</b>';
+  }
+
+  function renderAspectPicker() {
+    const row = document.getElementById('aspectRow');
+    if (!row) return;
+    row.innerHTML = '';
+    const sub = document.getElementById('aspectSub');
+    if (sub) {
+      sub.innerHTML = 'Titan Blood <b>' + metaBlood + '</b> · only one aspect is ever in force. ' +
+                      'A locked aspect can be bought here.';
+    }
+    const list = aspectsOf(chosenWeapon);
+    for (const a of list) {
+      const locked = !aspectUnlocked(a);
+      const picked = chosenAspect === a.id;
+      const right = metaButton(
+        locked ? 'Buy · ' + a.cost : (picked ? 'Chosen' : 'Take'),
+        (locked || picked) ? 'ghost' : '',
+        () => {
+          if (locked) { if (!buyAspect(a.id)) return; }
+          chosenAspect = a.id;
+          aspectSave();
+          renderAspectPicker();
+          renderAspectLine();
+        });
+      row.appendChild(metaRow({ title: a.name, sub: a.blurb + (locked ? ' · ' + a.cost + ' Titan Blood' : ''),
+                                cls: (picked ? 'picked' : (locked ? 'locked' : '')), right }));
+    }
+    // A base form is always offered: an aspect is an option, never a toll.
+    const baseRight = metaButton(chosenAspect ? 'Take' : 'Chosen', chosenAspect ? 'ghost' : '',
+      () => { chosenAspect = null; aspectSave(); renderAspectPicker(); renderAspectLine(); });
+    row.appendChild(metaRow({ title: 'Base form', sub: 'No aspect. The arm just as it is.',
+                              cls: chosenAspect ? '' : 'picked', right: baseRight }));
+  }
+
+  function aspectSave() {
+    try {
+      if (chosenAspect) localStorage.setItem('ue_aspect_pick_v1', chosenAspect);
+      else localStorage.removeItem('ue_aspect_pick_v1');
+    } catch (e) {}
+  }
+
+  function openAspects() { hide('menu'); renderAspectPicker(); show('aspects'); }
+  function closeAspects() { hide('aspects'); show('menu'); }
+
+  // Everything the House knows how to show. It switches on houseScreen so a tab
+  // is only ever a render, never a set of separate screens to keep in sync.
+  function renderHouse() {
+    const sub = document.getElementById('houseSub');
+    const body = document.getElementById('houseBody');
+    if (!body) return;
+    body.innerHTML = '';
+    for (const [id, tab] of [['tabArm', 'house'], ['tabMirror', 'mirror'],
+                             ['tabKeepsake', 'keepsake'], ['tabPact', 'pact']]) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      el.className = 'btn ghost tab' + (houseScreen === tab ? ' on' : '');
+    }
+    if (sub) {
+      sub.textContent = houseScreen === 'mirror' ? 'Spend Darkness on the mirror. Ranks are permanent.'
+        : houseScreen === 'keepsake' ? 'Carry one keepsake for the whole descent.'
+        : houseScreen === 'pact' ? 'Each rank adds Heat. Higher Heat is a harder, prouder run.'
+        : 'Choose the arm and the aspect you descend with.';
+    }
+
+    if (houseScreen === 'house') {
+      for (const w of WEAPONS) {
+        const arm = ARMS.find((x) => x.id === w.id);
+        const picked = w.id === chosenWeapon;
+        const right = metaButton(picked ? 'Carried' : 'Take', picked ? 'ghost' : '',
+          () => { chosenWeapon = w.id; chosenAspect = null; aspectSave();
+                  renderWeaponPicker(); renderAspectLine(); renderHouse(); });
+        body.appendChild(metaRow({
+          title: (arm ? arm.arm : w.name) + ' <span style="color:#b9a7d6">— ' + (arm ? arm.kind : '') + '</span>',
+          sub: w.blurb, cls: picked ? 'picked' : '', right }));
+      }
+      const right = metaButton('Aspects', 'ghost', () => { hide('house'); renderAspectPicker(); show('aspects'); });
+      body.appendChild(metaRow({ title: 'Aspect', sub: (aspectDef(chosenAspect) ? aspectDef(chosenAspect).name : 'Base form') +
+                                ' · Titan Blood ' + metaBlood, right }));
+    }
+
+    if (houseScreen === 'mirror') {
+      for (const t of MIRROR) {
+        const r = mirrorRank(t.id);
+        const full = r >= t.max;
+        const cost = mirrorCost(t.id, r);
+        const right = metaButton(full ? 'Maxed' : 'Buy · ' + cost, full ? 'ghost' : '',
+          () => { if (buyMirror(t.id)) renderHouse(); });
+        if (!full && metaDarkness < cost) right.className = 'ghost';
+        body.appendChild(metaRow({ title: t.name, sub: t.blurb, pips: '●'.repeat(r) + '○'.repeat(t.max - r),
+                                   cls: full ? 'picked' : '', right }));
+      }
+    }
+
+    if (houseScreen === 'keepsake') {
+      for (const k of KEEPSAKES) {
+        const picked = k.id === equippedKeepsake;
+        const right = metaButton(picked ? 'Worn' : 'Wear', picked ? 'ghost' : '',
+          () => equipKeepsake(k.id));
+        body.appendChild(metaRow({ title: k.name, sub: k.blurb, cls: picked ? 'picked' : '', right }));
+      }
+    }
+
+    if (houseScreen === 'pact') {
+      for (const t of PACTS) {
+        const r = pactRank(t.id);
+        const minus = metaButton('−', r ? '' : 'ghost', () => setPact(t.id, r - 1));
+        const plus = metaButton('+', r < t.max ? '' : 'ghost', () => setPact(t.id, r + 1));
+        const controls = document.createElement('div');
+        controls.style.display = 'flex'; controls.style.gap = '6px'; controls.style.alignItems = 'center';
+        controls.appendChild(minus); controls.appendChild(plus);
+        body.appendChild(metaRow({ title: t.name, sub: t.blurb, pips: '●'.repeat(r) + '○'.repeat(t.max - r),
+                                   cls: r ? 'picked' : '', right: controls }));
+      }
+      const right = metaButton(heatTotal() > 0 ? 'Clear Heat' : 'No Heat', heatTotal() > 0 ? '' : 'ghost',
+        () => { for (const t of PACTS) pactRanks[t.id] = 0; pactSave(); renderHouse(); refreshMeta(); });
+      body.appendChild(metaRow({ title: 'Heat ' + heatTotal(), sub: 'The score this run carries.',
+                                 cls: heatTotal() ? 'picked' : '', right }));
+    }
+    refreshMeta();
+  }
+
+  // ------------------------------------------------------- fold meta into a run
+  // One place where the four permanent choices meet the run's numbers, so the
+  // order is fixed and auditable: aspect first (it rebuilds the arm), then the
+  // keepsake, then the mirror, then the pact's penalties.
+  function applyMetaToRun() {
+    applyAspect(state, state.weapon);
+    const k = keepsakeMod();
+    const m = mirrorTotals();
+    const p = pactMod();
+    if (k.maxHpAdd) state.maxHp += k.maxHpAdd;
+    if (k.dmgMul) state.dmg *= k.dmgMul;
+    if (k.obolMul) state.obolMul = (state.obolMul || 1) * k.obolMul;
+    if (k.bloodAdd) state.bloodAdd = (state.bloodAdd || 0) + k.bloodAdd;
+    if (k.shieldBase) { state.shieldMax = Math.max(state.shieldMax, k.shieldBase); state.shield = state.shieldMax; }
+    state.maxHp += m.maxHpAdd;
+    state.dmg *= m.dmgMul;
+    state.speed *= m.speedMul;
+    state.reach += m.reachAdd;
+    state.dashCdMax *= m.dashCdMul;
+    state.splCdMax *= m.splCdMul;
+    state.specCdMax *= m.specCdMul;
+    state.healAdd = m.healAdd;
+    state.obolMul = (state.obolMul || 1) * m.obolMul;
+    state.bloodAdd = (state.bloodAdd || 0) + m.bloodAdd;
+    state.heat = heatTotal();
+    state.aspectId = chosenAspect || null;
+    state.foeDmgMul = p.foeDmgMul;
+    state.foeCountAdd = p.foeCountAdd;
+    state.bossHpMul = p.bossHpMul;
+    state.foeSpeedMul = p.foeSpeedMul;
+    state.shopMul = p.shopMul;
+    state.maxHp = Math.max(20, Math.round(state.maxHp * p.startHpMul));
+    state.hp = state.maxHp;
+  }
+
+  // Titan Blood comes home when a run is finished, win or lose. The mirror's
+  // Blood Rites and the Owl Pendant add to what each boss paid out.
+  function awardBlood() {
+    const add = (state.bloodEarned || 0) + (state.bloodAdd || 0) + (state.bloodBonus || 0);
+    if (add > 0) { metaBlood += add; bloodSave(); }
+    if (state.darknessEarned) { metaDarkness += state.darknessEarned; darknessSave(); }
+    try {
+      if (state.heat > 0) {
+        const bestHeat = Math.max(+(localStorage.getItem('ue_best_heat') || 0), state.heat);
+        localStorage.setItem('ue_best_heat', String(bestHeat));
+      }
+    } catch (e) {}
+    refreshMeta();
+  }
+
+  function initMeta() {
+    const on = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
+    // HOUSE_INIT_MARKER
+    on('houseBtn', () => houseOpen('house'));
+    on('houseBack', houseClose);
+    on('tabArm', () => { houseScreen = 'house'; renderHouse(); });
+    on('tabMirror', () => { houseScreen = 'mirror'; renderHouse(); });
+    on('tabKeepsake', () => { houseScreen = 'keepsake'; renderHouse(); });
+    on('tabPact', () => { houseScreen = 'pact'; renderHouse(); });
+    on('aspectDone', startRun);
+    on('muteBtn', toggleMute);
+    on('resetBtn', () => { if (window.confirm('Wipe all permanent progress?')) resetMeta(); });
+    applyMute();
+    try { chosenAspect = localStorage.getItem('ue_aspect_pick_v1') || null; } catch (e) { chosenAspect = null; }
+    if (chosenAspect && !aspectDef(chosenAspect)) chosenAspect = null;
+    // A remembered aspect belongs to a remembered arm; keep the two in step.
+    if (chosenAspect) {
+      const a = aspectDef(chosenAspect);
+      if (a && WEAPONS.some((w) => w.id === a.arm)) chosenWeapon = a.arm;
+    }
+    renderAspectLine();
+  }
+
   window.__game = { get mode() { return mode; }, start: startRun, resume: resumeRun,
                     hasSave: () => !!readSave(), save: saveRun, clearSave,
                     get state() { return state; }, get room() { return room; }, get cam() { return cam; },
@@ -5382,6 +6067,16 @@
                     realmOf, realmIndex, REALMS, BOSSES, buildRoom,
                     pressSpell, pressSpecial, readPad, PAD, padEdge,
                     gods: GODS, slots: SLOTS, shopItems: SHOP_ITEMS, offerCount: OFFER_COUNT,
+                    arms: ARMS, aspects: ASPECTS, mirror: MIRROR, keepsakes: KEEPSAKES, pacts: PACTS,
+                    aspectDef, aspectsOf, aspectUnlocked, buyAspect, applyAspect,
+                    get chosenAspect() { return chosenAspect; }, set chosenAspect(v) { chosenAspect = v; },
+                    mirrorRank, mirrorCost, buyMirror, mirrorTotals,
+                    keepsakeDef, equipKeepsake, get equippedKeepsake() { return equippedKeepsake; },
+                    pactRank, setPact, heatTotal, pactMod,
+                    houseOpen, houseClose, get houseScreen() { return houseScreen; },
+                    refreshMeta, renderHouse, applyMetaToRun, awardBlood,
+                    get metaBlood() { return metaBlood; }, set metaBlood(v) { metaBlood = v; },
+                    get metaDarkness() { return metaDarkness; }, set metaDarkness(v) { metaDarkness = v; },
                     rarity: RARITY, rarityOrder: RARITY_ORDER, rollRarity, rollRaritySet,
                     bindPower, offerSlots, openReward, openCorridor, spawnBoss,
                     shopVisible: () => !document.getElementById('shop').hidden,

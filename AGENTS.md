@@ -8,7 +8,8 @@ Single-file canvas roguelike PWA. No build step: `index.html` is the whole game,
 - Tests are Playwright scripts run one at a time; they need the server up:
   `smoke_test.py`, `art_test.py`, `pwa_test.py`, `feature_test.py`,
   `control_test.py`, `save_test.py`, `god_test.py`, `update_test.py`,
-  `stale_phone_test.py`, `clear_data_test.py`, `ability_test.py`.
+  `stale_phone_test.py`, `clear_data_test.py`, `ability_test.py`,
+  `realm_test.py`, `rarity_test.py`, `meta_test.py`.
 - `index.html` is one inline script; a quick syntax gate without a browser is
   `node -e "new Function(require('fs').readFileSync('index.html','utf8').match(/<script>([\s\S]*)<\/script>/)[1])"`.
 
@@ -188,6 +189,27 @@ Playwright is not installed by default: `pip install playwright` then
 `python3 -m playwright install chromium`. Run the suites one at a time — several
 browsers back to back can crash a page under load ("Target crashed"), which is
 resource contention rather than a real failure; rerun that suite on its own.
+
+## The House, aspects, mirror, keepsakes and the pact
+- `ARMS` lists the six Hades arms (Stygius, Varatha, Aegis, Coronacht, Malphon,
+  Exagryph) against the weapon ids the sim already uses. `ASPECTS` holds four per
+  arm; an aspect's `arm` must be a real weapon id, because `aspectsOf(id)` and
+  the House screen both key off it, and `meta_test.py` asserts the match.
+- The War Hammer (`hammer`) is the game's own bonus arm and deliberately has no
+  aspects. `meta_test.py` checks the six Hades arms have four each rather than
+  demanding aspects of every weapon.
+- `applyMetaToRun()` folds the permanent layer into a fresh run: the aspect's
+  `mod` (speed/cd/dmg/knock/shield/hp), the keepsake and the mirror ranks. A new
+  modifier must be applied here *and* consumed by the sim, or it is a stat that
+  is written and never read — the same trap as an unread boon flag.
+- Meta currency is `ue_meta_v1` (Darkness, Titan Blood, bought aspects, mirror
+  ranks, keepsakes, pact levels); `ue_aspect_pick_v1` holds the chosen aspect.
+  Both are separate from `ue_run_v1`, so clearing a run never wipes progress.
+- Pact Heat is summed by `heatTotal()` and copied onto the run as `state.heat`.
+  The pact's effects land as `foeCountAdd`, `foeDmgMul` and `bossHpMul`, so a
+  test can read the run rather than the pact table.
+- `meta_test.py` drives the real House screens, buys through the real entry
+  points, and starts a real run to prove the layer reaches the numbers.
 
 ## Deploy
 - The game is hosted from the branch `underworld-escape` in the user's repo
