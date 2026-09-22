@@ -174,6 +174,56 @@ with sync_playwright() as pw:
     check("unplugging the controller brings the touch controls back",
           not padOff["pad"] and padOff["stick"] and padOff["zone"], padOff)
 
+    # 10b. The pad's Start button pauses and, pressed again, resumes. The poll is
+    #      deliberately outside update() — update() does not run while paused, so
+    #      a check that lived there could pause but never resume. Driving the real
+    #      frame loop here is what proves that wiring rather than the intent.
+    padMap = page.evaluate("""() => ({ start: window.__game.PAD.START,
+                                     back: window.__game.PAD.BACK })""")
+    check("the pad layout maps Start and Back", padMap == {"start": 9, "back": 8}, padMap)
+
+    padPause = page.evaluate("""() => {
+      const g = window.__game;
+      const btns = Array.from({ length: 16 }, () => ({ pressed: false }));
+      window.__pad = { connected: true, axes: [0, 0], buttons: btns };
+      navigator.getGamepads = () => [window.__pad];
+      const hit = (on) => { btns[g.PAD.START].pressed = on; };
+
+      hit(true);
+      const edge = g.pollPadPause();
+      // held down: a pad button is a level, not an event, so this must be quiet
+      const repeat = g.pollPadPause();
+      hit(false);
+      g.pollPadPause();
+      const release = g.pollPadPause();
+      return { edge, repeat, release };
+    }""")
+    check("the pad's Start button registers one edge per press",
+          padPause["edge"] and padPause["repeat"] is False and padPause["release"] is False, padPause)
+
+    # The frame loop is what turns that edge into a pause, and only the loop can
+    # resume, since update() is skipped while paused.
+    padToggle = page.evaluate("""() => {
+      const g = window.__game;
+      const btns = Array.from({ length: 16 }, () => ({ pressed: false }));
+      window.__pad = { connected: true, axes: [0, 0], buttons: btns };
+      navigator.getGamepads = () => [window.__pad];
+      const hit = (on) => { btns[g.PAD.START].pressed = on; };
+      const seen = { start: g.mode };
+      // pump the real frame loop, one press at a time
+      hit(true); g.frame(performance.now() + 16);
+      seen.paused = g.mode;
+      hit(false); g.frame(performance.now() + 32);
+      hit(true); g.frame(performance.now() + 48);
+      seen.resumed = g.mode;
+      hit(false);
+      return seen;
+    }""")
+    check("a pad Start press pauses through the frame loop",
+          padToggle["start"] == "playing" and padToggle["paused"] == "paused", padToggle)
+    check("a second pad Start press resumes",
+          padToggle["resumed"] == "playing", padToggle)
+
     # 11. A landed blow has to read as impact: the frame is held, the camera is
     #     kicked, and the wound throws a ring and sparks.
     feel = page.evaluate("""() => {

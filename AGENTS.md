@@ -28,6 +28,20 @@ Single-file canvas roguelike PWA. No build step: `index.html` is the whole game,
 - A test that empties `room.enemies` must set `room.cleared = true` first, or the
   chamber clears and the reward screen pauses the sim, making every later ability
   check look broken.
+- The pad's Start/Back button is polled from `frame()`, not from `update()`.
+  `update()` only runs while `mode === 'playing'`, so a pause check inside it
+  could pause the run but never resume it; the poll must sit where every mode
+  reaches it. `pollPadPause()` keeps its own previous-state so a held button
+  fires exactly once instead of toggling every frame.
+- Hiding the touch controls is the `body.pad` class, but the stick and buttons
+  carry their own `on` class. `setPadActive(false)` therefore re-runs
+  `showTouch()`; without that, unplugging mid-run leaves them hidden (the CSS
+  `display:none` lifts, the inner `on` state is already gone) until the next room
+  reloads them. The two input paths are summed every frame (`input`, `kb`,
+  `pad`), so a controller never has to disable touch to work.
+- `window.__game` exposes `frame`, `pollPadPause` and `PAD` so a suite drives the
+  real loop and reads the real mapping rather than reimplementing either — a test
+  that calls `openPause()` itself passes even when the wiring is dead.
 
 ## Gods, slots and the market
 - A god is one entry in `GODS` with a variant per slot (`attack`, `special`,

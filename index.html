@@ -328,7 +328,9 @@
         at the start stays with you all the way down.<br />
       • Boons stack. Build a strong run, then beat the Warden.<br />
       • Keyboard: WASD or arrows to move, J strike, U spell, I special, Space dash.<br />
-      • Controller: left stick to move, X strike, Y special, B spell, A dash.
+      • Controller: left stick to move, X strike, Y special, B spell, A dash,
+        Start pause. The touch stick and buttons hide while a controller is
+        plugged in, and come back if you unplug it.
     </p>
     <div class="row"><button class="btn" id="helpBack" type="button">Got it</button></div>
   </div>
@@ -536,6 +538,10 @@
     if (padActive === on) return;
     padActive = on;
     document.body.classList.toggle('pad', on);
+    // The class alone only lifts the `display:none`; the stick and buttons keep
+    // their own `on` state, so unplugging mid-run has to re-run showTouch() or
+    // the controls stay invisible until the next room loads.
+    if (!on && mode === 'playing') showTouch();
     toast(on ? 'Controller ready — touch pad hidden' : 'Controller off — touch pad back');
   }
   window.addEventListener('gamepadconnected', () => setPadActive(true));
@@ -546,9 +552,25 @@
 
   // Standard pad layout: X strikes, Y casts the special, B casts the spell, A
   // dashes. The shoulder buttons and the D-pad stay aliases for dash and strike
-  // so an older habit still works.
-  const PAD = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, DPAD_UP: 12, DPAD_DOWN: 13 };
+  // so an older habit still works. Start and Back pause, the one thing a pad
+  // otherwise could not do that the keyboard could.
+  const PAD = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, BACK: 8, START: 9, DPAD_UP: 12, DPAD_DOWN: 13 };
   function padPressed(p, i) { return !!(p.buttons[i] && p.buttons[i].pressed); }
+
+  // Pause is checked every frame rather than inside update(), because update()
+  // does not run while the game is paused — and resuming is exactly what the
+  // pad button has to be able to do.
+  let padStartPrev = false;
+  function pollPadPause() {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    let down = false;
+    for (const p of pads) {
+      if (p && (padPressed(p, PAD.START) || padPressed(p, PAD.BACK))) { down = true; break; }
+    }
+    const edge = down && !padStartPrev;
+    padStartPrev = down;
+    return edge;
+  }
 
   function readPad() {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
@@ -3505,6 +3527,13 @@
   function frame(t) {
     const dt = Math.min(0.033, (t - lastT) / 1000 || 0.016);
     lastT = t;
+    // The pad's Start/Back button toggles pause, and it has to be polled here
+    // rather than in update(): update() is skipped while paused, yet resuming is
+    // exactly what the button must be able to do.
+    if (pollPadPause()) {
+      if (mode === 'playing') openPause();
+      else if (mode === 'paused') closePause();
+    }
     // Hit stop: the frame is held for a few dozen milliseconds so a solid blow
     // reads as impact rather than as a number changing. Only the simulation
     // pauses; rendering carries on, so nothing flickers.
@@ -3635,7 +3664,7 @@
   try {
     const best = localStorage.getItem('ue_best');
     if (best) document.getElementById('bestLine').textContent = 'Best depth so far: ' + best;
-    document.getElementById('buildLine').textContent = 'art build 11';
+    document.getElementById('buildLine').textContent = 'art build 12';
   } catch (e) {}
   refreshResume();
 
@@ -3659,7 +3688,7 @@
                     get state() { return state; }, get room() { return room; }, get cam() { return cam; },
                     get corridor() { return corridor; }, skipCorridor: finishCorridor, weapons: WEAPONS,
                     get padActive() { return padActive; }, get shake() { return shake; },
-                    get hitStop() { return hitStop; }, setPadActive,
+                    get hitStop() { return hitStop; }, setPadActive, pollPadPause, frame,
                     swing, hurtEnemy, castSpell, castSpecial,
                     pressSpell, pressSpecial, readPad, PAD, padEdge,
                     gods: GODS, slots: SLOTS, shopItems: SHOP_ITEMS, offerCount: OFFER_COUNT,

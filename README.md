@@ -180,7 +180,11 @@ the running build is always visible.
 - `WASD`/arrows or a gamepad's left stick also move you. On a desktop the mouse can
   drag the floating stick too.
 - A connected controller replaces the touch controls: they hide while it is in use
-  and return when it is unplugged.
+  and return when it is unplugged, thumb ring included.
+- The pad maps left stick to move, `X` strike, `Y` special, `B` spell, `A` dash,
+  and `Start` (or `Back`) to pause and resume. The pause poll runs in the frame
+  loop, not in `update()`, because `update()` is skipped while paused — a check
+  that lived there could pause the run but never resume it.
 - On a mouse-and-keyboard machine the resting thumb ring and the touch buttons stay
   out of the way, and a small
   `WASD move · J strike · U spell · I special · Space dash` hint takes their place.
