@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#0b0616" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Underworld Escape" />
+<title>Underworld Escape</title>
+<link rel="manifest" href="./manifest.webmanifest" />
+<link rel="apple-touch-icon" href="./icon-180.png" />
+<link rel="icon" href="./icon-192.png" />
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden; background: #0b0616; color: #f3ecff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    user-select: none; -webkit-user-select: none;
+  }
+  #app { position: fixed; inset: 0; }
+  canvas#stage { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .overlay {
+    position: absolute; inset: 0; z-index: 20; display: grid; place-content: center;
+    gap: 14px; padding: 24px; text-align: center;
+    background: radial-gradient(120% 90% at 50% 0%, #241041 0%, #0b0616 70%);
+  }
+  .overlay[hidden] { display: none; }
+  h1 { margin: 0; font-size: clamp(26px, 8vw, 44px); letter-spacing: .5px;
+       background: linear-gradient(180deg, #ffe9a8, #e0a44e 60%, #b1672a);
+       -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .sub { margin: 0; color: #b9a7d6; font-size: clamp(13px, 3.6vw, 16px); line-height: 1.55;
+         max-width: 34ch; margin-inline: auto; }
+  .btn {
+    appearance: none; border: 1px solid #ffffff2e; border-radius: 14px; cursor: pointer;
+    padding: 15px 26px; font-size: 17px; font-weight: 700; color: #1a0f2b;
+    background: linear-gradient(180deg, #ffe9a8, #e0a44e); min-width: 220px;
+  }
+  .btn.ghost { background: #ffffff12; color: #f3ecff; font-weight: 600; }
+  .btn:active { transform: translateY(1px); }
+  .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+  #hud { position: absolute; inset: 0; z-index: 10; pointer-events: none; display: none; }
+  #hud.on { display: block; }
+  .hud-top { position: absolute; top: calc(env(safe-area-inset-top) + 8px); left: 10px; right: 10px;
+             display: flex; align-items: center; gap: 8px; }
+  .bar { flex: 1; height: 16px; border-radius: 999px; background: #ffffff1c; overflow: hidden;
+         border: 1px solid #ffffff26; }
+  .bar > i { display: block; height: 100%; width: 100%; }
+  .bar.hp > i { background: linear-gradient(90deg, #ff5d5d, #ff9d5d); transition: width .15s linear; }
+  .bar.xp > i { background: linear-gradient(90deg, #7c5cff, #46d7ff); width: 0%; transition: width .2s ease; }
+  .chip { font-size: 12px; font-weight: 700; padding: 5px 9px; border-radius: 999px;
+          background: #ffffff17; border: 1px solid #ffffff26; white-space: nowrap; }
+  .hud-bottom { position: absolute; bottom: calc(env(safe-area-inset-bottom) + 6px); left: 10px; right: 10px;
+                display: flex; gap: 10px; justify-content: space-between; font-size: 12px; color: #cbbde6; }
+
+  #stick { position: absolute; z-index: 11; width: 138px; height: 138px; border-radius: 50%;
+           border: 2px solid #ffffff2b; background: #ffffff0f; display: none;
+           touch-action: none; left: 18px; bottom: calc(env(safe-area-inset-bottom) + 22px); }
+  #stick.on { display: block; }
+  #stick > i { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px;
+               border-radius: 50%; background: #ffffff36; border: 2px solid #ffffff5c; }
+  #stick span { position: absolute; inset: 0; display: grid; place-content: center;
+                font-size: 11px; color: #ffffff7a; }
+
+  .tbtn { position: absolute; z-index: 11; border-radius: 50%; border: 2px solid #ffffff33;
+          background: #ffffff1a; color: #fff; font-weight: 800; display: none;
+          touch-action: none; align-items: center; justify-content: center; }
+  .tbtn.on { display: flex; }
+  #btnDash { right: 20px; bottom: calc(env(safe-area-inset-bottom) + 118px); width: 74px; height: 74px; font-size: 12px; }
+  #btnHit  { right: 108px; bottom: calc(env(safe-area-inset-bottom) + 30px); width: 92px; height: 92px; font-size: 15px; }
+  .tbtn:active, .tbtn.press { background: #ffd4794d; border-color: #ffd47999; }
+  #toast { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); z-index: 15;
+           padding: 10px 18px; border-radius: 999px; background: #241041f2; border: 1px solid #ffffff33;
+           font-size: 15px; font-weight: 700; opacity: 0; transition: opacity .3s ease; pointer-events: none; }
+  #toast.on { opacity: 1; }
+
+  #cards { position: absolute; inset: 0; z-index: 22; display: grid; place-content: center; gap: 12px;
+           padding: 20px; background: #07030ef2; text-align: center; }
+  #cards[hidden] { display: none; }
+  #cards h2 { margin: 0 0 4px; font-size: 19px; color: #ffd88a; }
+  .card { width: min(460px, 88vw); padding: 14px 16px; border-radius: 16px; cursor: pointer;
+          border: 1px solid #ffffff2b; background: #ffffff0f; text-align: left; color: #f3ecff; }
+  .card:active { background: #ffffff1f; }
+  .card b { display: block; font-size: 16px; color: #ffe9a8; }
+  .card span { display: block; font-size: 13px; color: #b9a7d6; margin-top: 3px; line-height: 1.45; }
+  .card em { font-style: normal; font-size: 11px; color: #8f7fb5; }
+
+  #dbg { position: absolute; left: 8px; top: calc(env(safe-area-inset-top) + 34px); z-index: 30;
+         font: 11px/1.5 ui-monospace, Menlo, monospace; color: #9cffb0; background: #000000b3;
+         padding: 8px 10px; border-radius: 8px; white-space: pre; display: none; max-width: 92vw; overflow: auto; }
+  #dbg.on { display: block; }
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="stage"></canvas>
+
+  <div id="hud">
+    <div class="hud-top">
+      <div class="bar hp"><i id="hpFill"></i></div>
+      <div class="chip" id="depthChip">Depth 1</div>
+    </div>
+    <div class="hud-top" style="top: calc(env(safe-area-inset-top) + 32px)">
+      <div class="bar xp" style="height:8px"><i id="xpFill"></i></div>
+    </div>
+    <div class="hud-bottom">
+      <span id="boonList">no boons</span>
+      <span id="goldChip">0 obols</span>
+    </div>
+  </div>
+
+  <div id="stick"><span>move</span><i></i></div>
+  <button class="tbtn" id="btnDash" type="button">DASH</button>
+  <button class="tbtn" id="btnHit" type="button">STRIKE</button>
+
+  <div id="toast"></div>
+  <pre id="dbg"></pre>
+
+  <div id="cards" hidden>
+    <h2 id="cardsTitle">Choose a Boon</h2>
+    <div id="cardsBody"></div>
+  </div>
+
+  <div class="overlay" id="menu">
+    <h1>Underworld Escape</h1>
+    <p class="sub">An original Hades-inspired roguelike. Fight your way out of the
+      Underworld, take a god's boon after every chamber, and survive the Warden at the gate.</p>
+    <div class="row">
+      <button class="btn" id="playBtn" type="button">Tap to Play</button>
+    </div>
+    <div class="row">
+      <button class="btn ghost" id="helpBtn" type="button">How to play</button>
+    </div>
+    <p class="sub" id="bestLine" style="font-size:12px"></p>
+  </div>
+
+  <div class="overlay" id="help" hidden>
+    <h1 style="font-size:26px">How to play</h1>
+    <p class="sub" style="text-align:left">
+      • Left thumb on the round pad moves you.<br />
+      • STRIKE swings your blade at whatever is in front.<br />
+      • DASH makes you briefly untouchable — dash through enemies to escape.<br />
+      • Clear every shade in a chamber, then pick a god's boon.<br />
+      • Boons stack. Build a strong run, then beat the Warden.<br />
+      • A physical controller or keyboard also works.
+    </p>
+    <div class="row"><button class="btn" id="helpBack" type="button">Got it</button></div>
+  </div>
+
+  <div class="overlay" id="dead" hidden>
+    <h1 style="font-size:30px">The Underworld claims you</h1>
+    <p class="sub" id="deadStats"></p>
+    <div class="row"><button class="btn" id="againBtn" type="button">Escape again</button></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  const DBG = new URLSearchParams(location.search).get('debug') === '1';
+  const dbgEl = document.getElementById('dbg');
+  if (DBG) dbgEl.classList.add('on');
+  const dbg = (k, v) => { if (DBG) dbgEl.textContent += '\n' + k + '=' + v; };
+
+  const cvs = document.getElementById('stage');
+  const ctx = cvs.getContext('2d');
+  let VW = 0, VH = 0;
+  function resize() {
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    VW = Math.floor(window.innerWidth);
+    VH = Math.floor(window.innerHeight);
+    cvs.width = Math.floor(VW * dpr);
+    cvs.height = Math.floor(VH * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', () => setTimeout(resize, 120));
+  resize();
+
+  // ---------------------------------------------------------------- input
+  const input = { x: 0, y: 0 };
+  const held = { hit: false, dash: false };
+
+  const stick = document.getElementById('stick');
+  const knob = stick.querySelector('i');
+  let stickId = null, scx = 0, scy = 0, sr = 56;
+
+  function stickStart(e) {
+    const t = e.changedTouches ? e.changedTouches[0] : e;
+    stickId = t.identifier === undefined ? 'mouse' : t.identifier;
+    const r = stick.getBoundingClientRect();
+    scx = r.left + r.width / 2; scy = r.top + r.height / 2; sr = r.width * 0.42;
+    stickMove(e);
+  }
+  function stickMove(e) {
+    if (stickId === null) return;
+    const list = e.changedTouches || [e];
+    for (const t of list) {
+      const id = t.identifier === undefined ? 'mouse' : t.identifier;
+      if (id !== stickId) continue;
+      let dx = t.clientX - scx, dy = t.clientY - scy;
+      const d = Math.hypot(dx, dy) || 1;
+      const lim = Math.min(d, sr);
+      knob.style.transform = 'translate(' + (dx / d * lim) + 'px,' + (dy / d * lim) + 'px)';
+      input.x = dx / sr; input.y = dy / sr;
+      if (d > sr) { input.x *= sr / d; input.y *= sr / d; }
+    }
+  }
+  function stickEnd() {
+    stickId = null; input.x = 0; input.y = 0;
+    knob.style.transform = 'translate(0,0)';
+  }
+  stick.addEventListener('touchstart', (e) => { e.preventDefault(); stickStart(e); }, { passive: false });
+  stick.addEventListener('touchmove', (e) => { e.preventDefault(); stickMove(e); }, { passive: false });
+  stick.addEventListener('touchend', stickEnd);
+  stick.addEventListener('touchcancel', stickEnd);
+  stick.addEventListener('mousedown', (e) => { stickStart(e); });
+  window.addEventListener('mousemove', (e) => { if (stickId === 'mouse') stickMove(e); });
+  window.addEventListener('mouseup', () => { if (stickId === 'mouse') stickEnd(); });
+
+  function bindButton(id, key) {
+    const el = document.getElementById(id);
+    const down = (e) => { e.preventDefault(); held[key] = true; el.classList.add('press'); };
+    const up = (e) => { e.preventDefault(); held[key] = false; el.classList.remove('press'); };
+    el.addEventListener('touchstart', down, { passive: false });
+    el.addEventListener('touchend', up);
+    el.addEventListener('touchcancel', up);
+    el.addEventListener('mousedown', down);
+    el.addEventListener('mouseup', up);
+    el.addEventListener('mouseleave', up);
+  }
+  bindButton('btnHit', 'hit');
+  bindButton('btnDash', 'dash');
+
+  const keys = {};
+  window.addEventListener('keydown', (e) => {
+    keys[e.key.toLowerCase()] = true;
+    if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(e.key.toLowerCase())) e.preventDefault();
+  });
+  window.addEventListener('keyup', (e) => { keys[e.key.toLowerCase()] = false; });
+
+  function readKeys() {
+    let x = 0, y = 0;
+    if (keys['a'] || keys['arrowleft']) x -= 1;
+    if (keys['d'] || keys['arrowright']) x += 1;
+    if (keys['w'] || keys['arrowup']) y -= 1;
+    if (keys['s'] || keys['arrowdown']) y += 1;
+    const m = Math.hypot(x, y) || 1;
+    return { x: x / m, y: y / m, hit: !!keys['j'], dash: !!keys[' '] || !!keys['k'] };
+  }
+  let padHit = false, padDash = false;
+  window.addEventListener('gamepadconnected', (e) => toast('Controller connected'));
+  function readPad() {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (const p of pads) {
+      if (!p) continue;
+      let x = p.axes[0] || 0, y = p.axes[1] || 0;
+      if (Math.abs(x) < 0.18) x = 0;
+      if (Math.abs(y) < 0.18) y = 0;
+      return {
+        x, y,
+        hit: !!(p.buttons[0] && p.buttons[0].pressed) || !!(p.buttons[7] && p.buttons[7].pressed),
+        dash: !!(p.buttons[1] && p.buttons[1].pressed) || !!(p.buttons[5] && p.buttons[5].pressed) ||
+              !!(p.buttons[6] && p.buttons[6].pressed),
+      };
+    }
+    return null;
+  }
+
+  // ------------------------------------------------------------- utilities
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const randi = (a, b) => Math.floor(rand(a, b + 1));
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const TAU = Math.PI * 2;
+
+  function toast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.add('on');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => el.classList.remove('on'), 1800);
+  }
+
+  // -------------------------------------------------------------- content
+  const BOONS = [
+    { id: 'zeus', god: 'Zeus', name: 'Static Shock', desc: 'Strikes release chain lightning for +60% reach.',
+      apply: (s) => { s.reach *= 1.6; s.arc = true; } },
+    { id: 'athena', god: 'Athena', name: 'Bronze Bulwark', desc: 'Gain a shield that blocks one hit, restored each chamber.',
+      apply: (s) => { s.shieldMax += 1; s.shield = s.shieldMax; } },
+    { id: 'poseidon', god: 'Poseidon', name: 'Tidal Force', desc: 'Your strikes knock foes back hard.',
+      apply: (s) => { s.knock += 180; } },
+    { id: 'ares', god: 'Ares', name: 'Bloodlust', desc: 'Deal +35% damage.',
+      apply: (s) => { s.dmg *= 1.35; } },
+    { id: 'artemis', god: 'Artemis', name: "Hunter's Mark", desc: 'Move 25% faster and dash farther.',
+      apply: (s) => { s.speed *= 1.25; s.dashPow *= 1.25; } },
+    { id: 'aphrodite', god: 'Aphrodite', name: 'Healing Grace', desc: 'Recover 40 health and raise max health by 20.',
+      apply: (s) => { s.maxHp += 20; s.hp = Math.min(s.maxHp, s.hp + 40); } },
+    { id: 'demeter', god: 'Demeter', name: 'Frostbite', desc: 'Struck foes are slowed while they burn.',
+      apply: (s) => { s.slow = true; } },
+    { id: 'hermes', god: 'Hermes', name: 'Quick Feet', desc: 'Dashes recharge twice as fast.',
+      apply: (s) => { s.dashCdMax *= 0.5; } },
+    { id: 'dionysus', god: 'Dionysus', name: 'Hangover', desc: 'Defeated foes leave a damaging mist.',
+      apply: (s) => { s.mist = true; } },
+    { id: 'chaos', god: 'Chaos', name: 'Cursed Gift', desc: 'Double damage, but you carry 20 less max health.',
+      apply: (s) => { s.dmg *= 2; s.maxHp = Math.max(40, s.maxHp - 20); s.hp = Math.min(s.hp, s.maxHp); } },
+    { id: 'hephaestus', god: 'Hephaestus', name: 'Forge Blast', desc: 'Each strike has a chance to explode for heavy area damage.',
+      apply: (s) => { s.blast = true; } },
+  ];
+
+  // ------------------------------------------------------------- world/state
+  let state = null;
+  let mode = 'menu';     // menu | playing | reward | dead | paused
+  let lastT = 0;
+  let room = null;
+  const cam = { x: 0, y: 0 };
+
+  function newRun() {
+    state = {
+      hp: 100, maxHp: 100, dmg: 18, speed: 205, reach: 62, knock: 0,
+      arc: false, slow: false, mist: false, blast: false,
+      shield: 0, shieldMax: 0,
+      dashPow: 640, dashCd: 0, dashCdMax: 0.9, dashT: 0, inv: 0,
+      swingT: 0, swingCd: 0,
+      xp: 0, level: 1, obols: 0,
+      depth: 1, kills: 0, boons: [], takenIds: {},
+    };
+    state.hp = state.maxHp;
+    newRoom();
+  }
+
+  function newRoom() {
+    const depth = state.depth;
+    const w = Math.round(clamp(VW - 24, 320, 760));
+    const h = Math.round(clamp(VH - 190, 320, 620));
+    room = { w, h, enemies: [], projectiles: [], t: 0, mist: [], cleared: false, isBoss: depth % 5 === 0 };
+    state.player = { x: w / 2, y: h / 2, hx: 0, hy: 0, r: 15, kx: 0, ky: 0 };
+    // place the exit door on a random wall
+    const side = randi(0, 3);
+    room.door = side === 0 ? { x: w / 2, y: 8, w: 80, h: 14, side }
+             : side === 1 ? { x: w - 8, y: h / 2, w: 14, h: 80, side }
+             : side === 2 ? { x: w / 2, y: h - 8, w: 80, h: 14, side }
+             : { x: 8, y: h / 2, w: 14, h: 80, side };
+
+    if (room.isBoss) {
+      spawnBoss(depth);
+    } else {
+      const n = clamp(3 + Math.floor(depth * 0.9), 3, 11);
+      for (let i = 0; i < n; i++) spawnEnemy(depth);
+    }
+  }
+
+  function spawnEnemy(depth) {
+    const p = state.player;
+    let x, y, tries = 0;
+    do {
+      x = rand(40, room.w - 40); y = rand(40, room.h - 40); tries++;
+    } while (Math.hypot(x - p.x, y - p.y) < 150 && tries < 60);
+
+    const roll = Math.random();
+    const tier = Math.min(3, Math.floor(depth / 3));
+    if (roll < 0.45 + tier * 0.05) {
+      room.enemies.push({ kind: 'shade', x, y, r: 14, hp: 26 + depth * 8, max: 26 + depth * 8,
+        speed: 74 + depth * 3.4, dmg: 8 + depth, color: '#8f7bd8', atk: 0 });
+    } else if (roll < 0.78) {
+      room.enemies.push({ kind: 'wraith', x, y, r: 16, hp: 40 + depth * 10, max: 40 + depth * 10,
+        speed: 46 + depth * 2, dmg: 11 + depth, color: '#4fc3d9', atk: 0, shoot: rand(1.2, 2.4) });
+    } else {
+      room.enemies.push({ kind: 'brute', x, y, r: 22, hp: 80 + depth * 20, max: 80 + depth * 20,
+        speed: 44 + depth * 1.6, dmg: 17 + depth * 1.4, color: '#d96a4f', atk: 0 });
+    }
+  }
+
+  function spawnBoss(depth) {
+    const tier = depth / 5;
+    room.bossName = ['The Warden of the Gate', 'Cerberus Born Again', 'The Bone Tyrant',
+                     'The Iron Judge', 'Kronos Unbound'][Math.min(4, tier - 1)] || 'The Warden';
+    room.enemies.push({
+      kind: 'boss', x: room.w / 2, y: 90, r: 38,
+      hp: 340 + depth * 95, max: 340 + depth * 95,
+      speed: 46 + depth * 1.4, dmg: 20 + depth * 1.6, color: '#e0a44e',
+      atk: 0, shoot: 1.6, charging: 0, tier,
+    });
+    toast(room.bossName.toUpperCase() + ' blocks the way');
+  }
+
+  // ---------------------------------------------------------------- combat
+  function swing() {
+    const p = state.player;
+    if (state.swingCd > 0) return;
+    state.swingCd = 0.26;
+    state.swingT = 0.18;
+    const range = state.reach;
+    const dirX = p.hx || 0, dirY = p.hy || 0;
+    const lx = dirX === 0 && dirY === 0 ? (p.faceX || 0) : dirX;
+    const ly = dirX === 0 && dirY === 0 ? (p.faceY || 1) : dirY;
+    p.faceX = lx; p.faceY = ly;
+
+    for (const e of room.enemies) {
+      const dx = e.x - p.x, dy = e.y - p.y;
+      const d = Math.hypot(dx, dy);
+      if (d > range + e.r) continue;
+      const dot = (dx * lx + dy * ly) / (d || 1);
+      if (dot < 0.15) continue;   // must be roughly in front
+      hurtEnemy(e, state.dmg, { x: lx, y: ly });
+      if (state.arc) {
+        for (const o of room.enemies) {
+          if (o === e) continue;
+          if (dist(o, e) < 130) hurtEnemy(o, state.dmg * 0.5, { x: lx, y: ly });
+        }
+        room.projectiles.push({ x: e.x, y: e.y, t: 0.16, kind: 'spark' });
+      }
+      if (state.blast && Math.random() < 0.3) {
+        for (const o of room.enemies) if (dist(o, e) < 90) hurtEnemy(o, state.dmg * 0.8, null);
+        room.projectiles.push({ x: e.x, y: e.y, t: 0.22, kind: 'blast', r: 90 });
+      }
+    }
+  }
+
+  function hurtEnemy(e, amount, push) {
+    e.hp -= amount;
+    e.burn = 0.12;
+    if (state.slow) e.slowed = 1.6;
+    if (push && state.knock) {
+      const d = Math.hypot(push.x, push.y) || 1;
+      e.kx = (push.x / d) * state.knock;
+      e.ky = (push.y / d) * state.knock;
+    }
+    if (e.hp <= 0) killEnemy(e);
+  }
+
+  function killEnemy(e) {
+    e.dead = true;
+    state.kills++;
+    state.xp += e.kind === 'boss' ? 60 : e.kind === 'brute' ? 8 : e.kind === 'wraith' ? 5 : 4;
+    state.obols += e.kind === 'boss' ? 120 : e.kind === 'brute' ? 12 : 6;
+    if (state.mist) room.mist.push({ x: e.x, y: e.y, r: 46, t: 4.5 });
+    levelUp();
+  }
+
+  function levelUp() {
+    while (state.xp >= xpNeeded(state.level)) {
+      state.xp -= xpNeeded(state.level);
+      state.level++;
+      state.maxHp += 10;
+      state.hp = Math.min(state.maxHp, state.hp + 22);
+      toast('Level ' + state.level + ' — health restored');
+    }
+  }
+  const xpNeeded = (lvl) => 14 + lvl * 9;
+
+  function damagePlayer(amount) {
+    if (state.inv > 0) return;
+    if (state.shield > 0) {
+      state.shield--;
+      state.inv = 1.0;
+      toast('Shield absorbed the blow');
+      return;
+    }
+    state.hp -= amount;
+    state.inv = 0.75;
+    if (state.hp <= 0) { state.hp = 0; die(); }
+  }
+
+  function die() {
+    mode = 'dead';
+    dbg('died', state.depth);
+    const best = Math.max(+(localStorage.getItem('ue_best') || 0), state.depth);
+    try { localStorage.setItem('ue_best', String(best)); } catch (e) {}
+    document.getElementById('deadStats').innerHTML =
+      'You reached <b>depth ' + state.depth + '</b>.<br />' +
+      'Foes felled: ' + state.kills + ' · Boons: ' + state.boons.length + '<br />' +
+      'Best depth ever: ' + best;
+    show('dead');
+    document.getElementById('hud').classList.remove('on');
+    hideTouch();
+  }
+
+  function win() {
+    mode = 'dead';
+    const best = Math.max(+(localStorage.getItem('ue_best') || 0), state.depth);
+    try { localStorage.setItem('ue_best', String(best)); } catch (e) {}
+    document.querySelector('#dead h1').textContent = 'You escaped the Underworld';
+    document.getElementById('deadStats').innerHTML =
+      'You walked out through the gate at <b>depth ' + state.depth + '</b>.<br />' +
+      'Foes felled: ' + state.kills + ' · Boons taken: ' + state.boons.length + '<br />' +
+      'Best depth ever: ' + best;
+    document.querySelector('#dead .btn').textContent = 'Descend again';
+    show('dead');
+    document.getElementById('hud').classList.remove('on');
+    hideTouch();
+  }
+
+  // ---------------------------------------------------------------- update
+  function update(dt) {
+    const p = state.player;
+    room.t += dt;
+
+    const pad = readPad();
+    const kb = readKeys();
+    let mx = input.x + kb.x + (pad ? pad.x : 0);
+    let my = input.y + kb.y + (pad ? pad.y : 0);
+    const ml = Math.hypot(mx, my);
+    if (ml > 1) { mx /= ml; my /= ml; }
+    p.hx = mx; p.hy = my;
+    if (ml > 0.05) { p.faceX = mx / (ml || 1); p.faceY = my / (ml || 1); }
+
+    const dashing = state.dashT > 0;
+    const spd = state.speed * (dashing ? 2.6 : 1);
+    p.x += mx * spd * dt;
+    p.y += my * spd * dt;
+
+    // knockback on the player from brutes
+    p.x += p.kx * dt; p.y += p.ky * dt;
+    p.kx *= Math.pow(0.001, dt); p.ky *= Math.pow(0.001, dt);
+
+    p.x = clamp(p.x, p.r, room.w - p.r);
+    p.y = clamp(p.y, p.r, room.h - p.r);
+
+    // timers
+    state.inv = Math.max(0, state.inv - dt);
+    state.swingCd = Math.max(0, state.swingCd - dt);
+    state.swingT = Math.max(0, state.swingT - dt);
+    state.dashCd = Math.max(0, state.dashCd - dt);
+    state.dashT = Math.max(0, state.dashT - dt);
+
+    const wantDash = held.dash || kb.dash || (pad && pad.dash);
+    if (wantDash && state.dashCd <= 0 && (ml > 0.05 || p.faceY)) {
+      state.dashT = 0.16; state.dashCd = state.dashCdMax; state.inv = Math.max(state.inv, 0.22);
+      const dx = ml > 0.05 ? mx / ml : p.faceX, dy = ml > 0.05 ? my / ml : p.faceY;
+      p.kx = dx * state.dashPow; p.ky = dy * state.dashPow;
+    }
+    const wantHit = held.hit || kb.hit || (pad && pad.hit);
+    if (wantHit) swing();
+
+    // enemies
+    for (const e of room.enemies) {
+      if (e.dead) continue;
+      e.burn = Math.max(0, (e.burn || 0) - dt);
+      e.slowed = Math.max(0, (e.slowed || 0) - dt);
+      const slowMul = e.slowed > 0 ? 0.45 : 1;
+      const dx = p.x - e.x, dy = p.y - e.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const touching = d < e.r + p.r + 4;
+
+      if (e.kind === 'boss') {
+        e.shoot -= dt * slowMul;
+        const range = e.tier >= 1 ? 240 : 200;
+        if (d > range) {
+          e.x += (dx / d) * e.speed * slowMul * dt;
+          e.y += (dy / d) * e.speed * slowMul * dt;
+        } else if (e.shoot <= 0) {
+          e.shoot = Math.max(0.7, 1.7 - e.dmg * 0.012);
+          const shots = 5 + Math.min(7, Math.floor(state.depth / 2));
+          for (let i = 0; i < shots; i++) {
+            const a = (i / shots) * TAU + room.t;
+            room.projectiles.push({ x: e.x, y: e.y, vx: Math.cos(a) * 175, vy: Math.sin(a) * 175,
+              r: 8, dmg: 12 + state.depth, t: 4.5, kind: 'orb', hostile: true });
+          }
+          // charge attack on the horizontal axis
+          if (Math.random() < 0.35) { e.charging = 0.55; e.cdir = { x: dx / d, y: dy / d }; }
+        }
+        if (e.charging > 0) {
+          e.charging -= dt;
+          e.x += e.cdir.x * 430 * dt; e.y += e.cdir.y * 430 * dt;
+          e.x = clamp(e.x, e.r, room.w - e.r); e.y = clamp(e.y, e.r, room.h - e.r);
+          if (touching) damagePlayer(e.dmg * 1.2);
+        } else if (touching) damagePlayer(e.dmg);
+      } else if (e.kind === 'wraith') {
+        if (d > 170) { e.x += (dx / d) * e.speed * slowMul * dt; e.y += (dy / d) * e.speed * slowMul * dt; }
+        e.shoot -= dt * slowMul;
+        if (e.shoot <= 0 && d < 420) {
+          e.shoot = rand(1.7, 3.1);
+          const a = Math.atan2(dy, dx);
+          room.projectiles.push({ x: e.x, y: e.y, vx: Math.cos(a) * 195, vy: Math.sin(a) * 195,
+            r: 7, dmg: 9 + state.depth, t: 4, kind: 'orb', hostile: true });
+        }
+        if (touching) damagePlayer(e.dmg * 0.6);
+      } else {
+        e.x += (dx / d) * e.speed * slowMul * dt;
+        e.y += (dy / d) * e.speed * slowMul * dt;
+        if (e.kind === 'brute' && e.atk <= 0 && touching) { e.atk = 0.9; damagePlayer(e.dmg); }
+        else if (e.kind === 'shade' && touching) damagePlayer(e.dmg * 0.55);
+      }
+      e.atk = Math.max(0, (e.atk || 0) - dt);
+      e.x += (e.kx || 0) * dt; e.y += (e.ky || 0) * dt;
+      e.kx = (e.kx || 0) * Math.pow(0.0005, dt);
+      e.ky = (e.ky || 0) * Math.pow(0.0005, dt);
+      e.x = clamp(e.x, e.r, room.w - e.r);
+      e.y = clamp(e.y, e.r, room.h - e.r);
+    }
+    room.enemies = room.enemies.filter((e) => !e.dead);
+
+    // projectiles
+    for (const pr of room.projectiles) {
+      if (pr.kind === 'spark' || pr.kind === 'blast') { pr.t -= dt; continue; }
+      pr.t -= dt;
+      pr.x += pr.vx * dt; pr.y += pr.vy * dt;
+      if (pr.x < 0 || pr.y < 0 || pr.x > room.w || pr.y > room.h) pr.t = 0;
+      if (pr.hostile && Math.hypot(pr.x - p.x, pr.y - p.y) < pr.r + p.r) {
+        damagePlayer(pr.dmg); pr.t = 0;
+      }
+    }
+    room.projectiles = room.projectiles.filter((pr) => pr.t > 0);
+
+    // lingering mist
+    for (const m of room.mist) {
+      m.t -= dt;
+      for (const e of room.enemies) {
+        if (dist(e, m) < m.r + e.r) { e.burn = 0.12; hurtEnemy(e, 14 * dt * 6, null); }
+      }
+    }
+    room.mist = room.mist.filter((m) => m.t > 0);
+
+    // pickups for obols are automatic; door unlocks when the room is clear
+    if (!room.cleared && room.enemies.length === 0 && room.projectiles.every((x) => x.kind === 'spark' || x.kind === 'blast')) {
+      room.cleared = true;
+      if (room.isBoss) { toast('The gate stands open'); }
+      else { openReward(); }
+    }
+
+    // reaching the door
+    if (room.cleared && room.door) {
+      const dxg = Math.abs(p.x - room.door.x), dyg = Math.abs(p.y - room.door.y);
+      if (dxg < 52 && dyg < 52) {
+        if (state.depth >= 25) { win(); }
+        else {
+          state.depth++;
+          if (state.shieldMax > 0) state.shield = state.shieldMax;
+          newRoom();
+          toast('Depth ' + state.depth);
+        }
+      }
+    }
+
+    cam.scale = clamp(Math.min(VW / room.w, VH / room.h), 1, 3);
+    const viewW = VW / cam.scale, viewH = VH / cam.scale;
+    cam.x = clamp(p.x - viewW / 2, 0, Math.max(0, room.w - viewW));
+    cam.y = clamp(p.y - viewH / 2, 0, Math.max(0, room.h - viewH));
+    updateHud();
+  }
+
+  function updateHud() {
+    document.getElementById('hpFill').style.width = (state.hp / state.maxHp * 100) + '%';
+    document.getElementById('xpFill').style.width = (state.xp / xpNeeded(state.level) * 100) + '%';
+    document.getElementById('depthChip').textContent =
+      'Depth ' + state.depth + (room.isBoss ? ' · BOSS' : '');
+    document.getElementById('goldChip').textContent = state.obols + ' obols' +
+      (state.shield > 0 ? ' · shield ' + state.shield : '');
+    document.getElementById('boonList').textContent =
+      state.boons.length ? state.boons.map((b) => b.god).join(' · ') : 'no boons';
+  }
+
+  // ---------------------------------------------------------------- reward
+  function openReward() {
+    mode = 'reward';
+    const pool = BOONS.filter((b) => !state.takenIds[b.id]);
+    const pick = [];
+    while (pick.length < 3 && pool.length) pick.push(pool.splice(randi(0, pool.length - 1), 1)[0]);
+    const body = document.getElementById('cardsBody');
+    body.innerHTML = '';
+    document.getElementById('cardsTitle').textContent =
+      'Depth ' + state.depth + ' cleared — take a boon';
+    for (const b of pick) {
+      const el = document.createElement('button');
+      el.className = 'card';
+      el.type = 'button';
+      el.innerHTML = '<em>' + b.god.toUpperCase() + '</em><b>' + b.name + '</b><span>' + b.desc + '</span>';
+      el.addEventListener('click', () => takeBoon(b));
+      body.appendChild(el);
+    }
+    show('cards');
+  }
+
+  function takeBoon(b) {
+    b.apply(state);
+    state.boons.push({ god: b.god, name: b.name });
+    state.takenIds[b.id] = true;
+    hide('cards');
+    mode = 'playing';
+    toast(b.god + ': ' + b.name);
+  }
+
+  // ---------------------------------------------------------------- render
+  function render() {
+    const p = state.player;
+    ctx.fillStyle = '#0b0616';
+    ctx.fillRect(0, 0, VW, VH);
+
+    const s = cam.scale || 1;
+    ctx.save();
+    ctx.scale(s, s);
+    ctx.translate(-cam.x, -cam.y);
+
+    // floor
+    const g = ctx.createRadialGradient(room.w / 2, room.h / 2, 40, room.w / 2, room.h / 2, Math.max(room.w, room.h) * 0.7);
+    g.addColorStop(0, '#1d1033');
+    g.addColorStop(1, '#0d0719');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, room.w, room.h);
+
+    // grid
+    ctx.strokeStyle = '#ffffff09';
+    ctx.lineWidth = 1;
+    for (let x = 0; x < room.w; x += 48) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, room.h); ctx.stroke(); }
+    for (let y = 0; y < room.h; y += 48) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(room.w, y); ctx.stroke(); }
+
+    // walls
+    ctx.strokeStyle = '#6a4bd455';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(3, 3, room.w - 6, room.h - 6);
+
+    // door
+    if (room.door) {
+      const d = room.door;
+      ctx.fillStyle = room.cleared ? '#ffd479' : '#4a3a6b';
+      ctx.shadowColor = room.cleared ? '#ffd479' : 'transparent';
+      ctx.shadowBlur = room.cleared ? 22 : 0;
+      ctx.fillRect(d.x - d.w / 2, d.y - d.h / 2, d.w, d.h);
+      ctx.shadowBlur = 0;
+    }
+
+    // mist
+    for (const m of room.mist) {
+      ctx.globalAlpha = clamp(m.t / 4.5, 0, 1) * 0.4;
+      ctx.fillStyle = '#7ce0a0';
+      ctx.beginPath(); ctx.arc(m.x, m.y, m.r, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // enemies
+    for (const e of room.enemies) {
+      ctx.save();
+      ctx.translate(e.x, e.y);
+      const flash = e.burn > 0;
+      ctx.fillStyle = flash ? '#ffffff' : e.color;
+      if (e.kind === 'boss') {
+        ctx.rotate(Math.sin(room.t * 2) * 0.06);
+        ctx.beginPath();
+        ctx.moveTo(0, -e.r); ctx.lineTo(e.r, 0); ctx.lineTo(0, e.r); ctx.lineTo(-e.r, 0);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#2a1740';
+        ctx.beginPath(); ctx.arc(-10, -6, 5, 0, TAU); ctx.arc(10, -6, 5, 0, TAU); ctx.fill();
+      } else if (e.kind === 'brute') {
+        ctx.beginPath(); ctx.arc(0, 0, e.r, 0, TAU); ctx.fill();
+        ctx.fillStyle = '#2a1740'; ctx.fillRect(-8, -4, 16, 8);
+      } else if (e.kind === 'wraith') {
+        ctx.beginPath();
+        ctx.arc(0, 0, e.r, Math.PI, 0);
+        ctx.lineTo(e.r, e.r); ctx.lineTo(-e.r, e.r); ctx.closePath(); ctx.fill();
+      } else {
+        ctx.beginPath(); ctx.arc(0, 0, e.r, 0, TAU); ctx.fill();
+        ctx.fillStyle = '#2a1740';
+        ctx.beginPath(); ctx.arc(-4.5, -3, 2.6, 0, TAU); ctx.arc(4.5, -3, 2.6, 0, TAU); ctx.fill();
+      }
+      ctx.restore();
+      if (e.kind === 'boss' || e.hp < e.max) {
+        const w = e.r * 2.2;
+        ctx.fillStyle = '#000000cc';
+        ctx.fillRect(e.x - w / 2, e.y - e.r - 13, w, 5);
+        ctx.fillStyle = e.kind === 'boss' ? '#ffd479' : '#ff6b6b';
+        ctx.fillRect(e.x - w / 2, e.y - e.r - 13, w * clamp(e.hp / e.max, 0, 1), 5);
+      }
+    }
+
+    // projectiles
+    for (const pr of room.projectiles) {
+      if (pr.kind === 'spark') {
+        ctx.globalAlpha = clamp(pr.t / 0.16, 0, 1);
+        ctx.strokeStyle = '#ffe9a8'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(pr.x, pr.y, 60 + (1 - pr.t / 0.16) * 40, 0, TAU); ctx.stroke();
+        ctx.globalAlpha = 1;
+      } else if (pr.kind === 'blast') {
+        ctx.globalAlpha = clamp(pr.t / 0.22, 0, 1);
+        ctx.fillStyle = '#ff9d5d';
+        ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r, 0, TAU); ctx.fill();
+        ctx.globalAlpha = 1;
+      } else {
+        ctx.fillStyle = pr.hostile ? '#ff8da1' : '#ffe9a8';
+        ctx.beginPath(); ctx.arc(pr.x, pr.y, pr.r, 0, TAU); ctx.fill();
+      }
+    }
+
+    // player
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    if (state.inv > 0 && Math.floor(room.t * 20) % 2 === 0) ctx.globalAlpha = 0.45;
+    if (state.shield > 0) {
+      ctx.strokeStyle = '#9fd8ff'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(0, 0, p.r + 8, 0, TAU); ctx.stroke();
+    }
+    ctx.fillStyle = '#f5e9c8';
+    ctx.beginPath(); ctx.arc(0, 0, p.r, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#2a1740';
+    const fx = p.faceX || 0, fy = p.faceY || 1;
+    ctx.beginPath(); ctx.arc(fx * 5, fy * 5, 4, 0, TAU); ctx.fill();
+
+    // blade
+    const ang = Math.atan2(fy, fx);
+    const reach = state.swingT > 0 ? state.reach * 1.05 : state.reach * 0.72;
+    ctx.save();
+    ctx.rotate(ang);
+    if (state.swingT > 0) ctx.globalAlpha = 0.55;
+    ctx.fillStyle = '#dfe6ff';
+    ctx.fillRect(6, -4, reach, 8);
+    if (state.swingT > 0) {
+      ctx.globalAlpha = 0.3;
+      ctx.beginPath();
+      ctx.arc(0, 0, reach, -0.9, 0.9);
+      ctx.lineTo(0, 0); ctx.closePath();
+      ctx.fillStyle = '#ffe9a8'; ctx.fill();
+    }
+    ctx.restore();
+    ctx.restore();
+
+    ctx.restore();
+  }
+
+  // ------------------------------------------------------------- main loop
+  function frame(t) {
+    const dt = Math.min(0.033, (t - lastT) / 1000 || 0.016);
+    lastT = t;
+    if (mode === 'playing') update(dt);
+    if (state && state.player) render();
+    requestAnimationFrame(frame);
+  }
+
+  // --------------------------------------------------------------- screens
+  const screens = ['menu', 'help', 'dead', 'cards'];
+  function show(id) { const el = document.getElementById(id); if (el) el.hidden = false; }
+  function hide(id) { const el = document.getElementById(id); if (el) el.hidden = true; }
+
+  function showTouch() {
+    stick.classList.add('on');
+    document.getElementById('btnHit').classList.add('on');
+    document.getElementById('btnDash').classList.add('on');
+  }
+  function hideTouch() {
+    stick.classList.remove('on');
+    document.getElementById('btnHit').classList.remove('on');
+    document.getElementById('btnDash').classList.remove('on');
+  }
+
+  function startRun() {
+    hide('menu'); hide('help'); hide('dead');
+    document.querySelector('#dead h1').textContent = 'The Underworld claims you';
+    document.querySelector('#dead .btn').textContent = 'Escape again';
+    document.getElementById('hud').classList.add('on');
+    document.body.classList.add('touching');
+    showTouch();
+    newRun();
+    mode = 'playing';
+    toast('Depth 1 — clear the chamber');
+    dbg('started', 1);
+  }
+
+  document.getElementById('playBtn').addEventListener('click', startRun);
+  document.getElementById('againBtn').addEventListener('click', startRun);
+  document.getElementById('helpBtn').addEventListener('click', () => { hide('menu'); show('help'); });
+  document.getElementById('helpBack').addEventListener('click', () => { hide('help'); show('menu'); });
+
+  try {
+    const best = localStorage.getItem('ue_best');
+    if (best) document.getElementById('bestLine').textContent = 'Best depth so far: ' + best;
+  } catch (e) {}
+
+  // Debug snapshot for automated checks (see ?debug=1).
+  if (DBG) {
+    setInterval(() => {
+      const p = state && state.player;
+      dbg('mode', mode);
+      dbg('player', p ? Math.round(p.x) + ',' + Math.round(p.y) : '-');
+      dbg('enemies', room ? room.enemies.length : '-');
+      dbg('hp', state ? state.hp + '/' + state.maxHp : '-');
+      if (mode === 'menu') document.title = 'READY';
+    }, 1000);
+    window.addEventListener('error', (e) => dbg('error', e.message));
+  }
+
+  // Face south-east at boot so the canvas shows something before the first move.
+  requestAnimationFrame((t) => { lastT = t; frame(t); });
+  window.__game = { get mode() { return mode; }, start: startRun, get state() { return state; }, get room() { return room; } };
+
+  // Offline PWA: once installed to the Home Screen the game keeps working with
+  // no server and no network, because every asset is cached on first load.
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+})();
+</script>
+</body>
+</html>
