@@ -46,18 +46,25 @@ with sync_playwright() as pw:
         """() => { const c = document.getElementById('stage'); const r = c.getBoundingClientRect();
                    return Math.round(r.width) + 'x' + Math.round(r.height); }"""))
 
-    # Drag the joystick and confirm the player actually moves.
+    # Drag on the left half and confirm the player actually moves. The stick is
+    # floating, so the touch point is what defines the direction, not the ring.
     before = page.evaluate("() => ({x: window.__game.state.player.x, y: window.__game.state.player.y})")
-    box = page.locator("#stick").bounding_box()
-    page.touchscreen.tap(box["x"] + 30, box["y"] + 30)
-    page.wait_for_timeout(200)
-    page.mouse.move(box["x"] + 69, box["y"] + 69)
+    page.touchscreen.tap(120, 600)
+    page.wait_for_timeout(120)
+    origin = page.evaluate("""() => {
+      const s = document.getElementById('stick');
+      return { left: parseFloat(s.style.left), top: parseFloat(s.style.top) };
+    }""")
+    print("stick spawned under the thumb:", 60 < origin["left"] < 90 and 540 < origin["top"] < 570)
+    page.mouse.move(120, 600)
     page.mouse.down()
-    page.mouse.move(box["x"] + 69, box["y"] + 20, steps=5)
+    page.mouse.move(120, 520, steps=6)
     page.wait_for_timeout(500)
     page.mouse.up()
     after = page.evaluate("() => ({x: window.__game.state.player.x, y: window.__game.state.player.y})")
-    print("joystick moved player:", abs(after["x"] - before["x"]) + abs(after["y"] - before["y"]) > 5)
+    moved = abs(after["x"] - before["x"]) + abs(after["y"] - before["y"])
+    print("joystick moved player:", moved > 5, "distance:", round(moved))
+    print("moved up as dragged:", after["y"] < before["y"])
 
     # Kill the server connection and confirm the cached shell still loads.
     page.route("**/*", lambda route: route.abort())

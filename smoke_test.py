@@ -20,10 +20,13 @@ with sync_playwright() as pw:
     page.keyboard.down("j")
 
     # Drive the run programmatically: clear chambers, take boons, reach the boss.
+    # Reach and damage live on the weapon now, so the harness widens the arm it
+    # is holding rather than a state field the sim no longer reads.
     page.evaluate(
         """() => {
           const g = window.__game;
-          g.state.dmg = 400; g.state.reach = 260; g.state.speed = 320;
+          g.state.dmg = 400; g.state.speed = 320;
+          g.state.weapon = Object.assign({}, g.state.weapon, { reach: 260 });
         }"""
     )
 
@@ -52,6 +55,10 @@ with sync_playwright() as pw:
             }"""
         )
         phases.append(snap)
+        # the walk between chambers is skippable; the harness skips it
+        if snap["mode"] == "corridor":
+            page.evaluate("window.__game.skipCorridor()")
+            page.wait_for_timeout(80)
         # when a reward is on screen, take the first card
         if snap["mode"] == "reward":
             page.evaluate("document.querySelector('#cardsBody .card').click()")
