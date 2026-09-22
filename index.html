@@ -241,6 +241,7 @@
 
   <div id="cards" hidden>
     <h2 id="cardsTitle">Choose a Boon</h2>
+    <p class="sub" id="cardsSub"></p>
     <div id="cardsBody"></div>
   </div>
 
@@ -622,6 +623,10 @@
     { id: 'special', label: 'Special', blurb: 'your SPECIAL', key: 'special' },
     { id: 'spell',   label: 'Spell',   blurb: 'your SPELL',   key: 'spell' },
   ];
+
+  // How many gods a cleared chamber offers. Two keeps the choice a real
+  // decision without either option being obviously the only one.
+  const OFFER_COUNT = 2;
 
   const GODS = [
     {
@@ -1885,7 +1890,7 @@
 
   function openReward() {
     mode = 'reward';
-    // On a resume the same three gods come back, so leaving mid-choice and
+    // On a resume the same pair of gods comes back, so leaving mid-choice and
     // returning does not reroll the offer.
     let pick;
     if (state.offer && state.offer.length) {
@@ -1893,13 +1898,17 @@
     } else {
       const pool = GODS.slice();
       pick = [];
-      while (pick.length < 3 && pool.length) pick.push(pool.splice(randi(0, pool.length - 1), 1)[0]);
+      while (pick.length < OFFER_COUNT && pool.length) {
+        pick.push(pool.splice(randi(0, pool.length - 1), 1)[0]);
+      }
     }
     state.offer = pick.map((g) => g.id);
     const body = document.getElementById('cardsBody');
     body.innerHTML = '';
     document.getElementById('cardsTitle').textContent =
-      'Depth ' + state.depth + ' cleared — take a god\'s favour';
+      'Depth ' + state.depth + ' cleared — choose one';
+    document.getElementById('cardsSub').textContent =
+      'Two gods offer a favour. Take one, then decide which move it empowers.';
     for (const g of pick) {
       const el = document.createElement('button');
       el.className = 'card';
@@ -3626,7 +3635,7 @@
   try {
     const best = localStorage.getItem('ue_best');
     if (best) document.getElementById('bestLine').textContent = 'Best depth so far: ' + best;
-    document.getElementById('buildLine').textContent = 'art build 10';
+    document.getElementById('buildLine').textContent = 'art build 11';
   } catch (e) {}
   refreshResume();
 
@@ -3653,7 +3662,7 @@
                     get hitStop() { return hitStop; }, setPadActive,
                     swing, hurtEnemy, castSpell, castSpecial,
                     pressSpell, pressSpecial, readPad, PAD, padEdge,
-                    gods: GODS, slots: SLOTS, shopItems: SHOP_ITEMS,
+                    gods: GODS, slots: SLOTS, shopItems: SHOP_ITEMS, offerCount: OFFER_COUNT,
                     bindPower, offerSlots, openShop, closeShop, openPause, closePause,
                     // One simulation step, gated the same way the frame loop is, so
                     // a headless check can advance the room without touching a clock.

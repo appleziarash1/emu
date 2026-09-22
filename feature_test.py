@@ -121,6 +121,8 @@ with sync_playwright() as pw:
     cards = page.evaluate("""() => {
       const cards = [...document.querySelectorAll('#cardsBody .card')];
       return { count: cards.length,
+               want: window.__game.offerCount,
+               sub: document.getElementById('cardsSub').textContent,
                trades: cards.filter((c) => c.textContent.includes('CHANGE YOUR ARM')).length,
                weapons: cards.filter((c) => c.textContent.includes('Xiphos') ||
                                              c.textContent.includes('Spear') ||
@@ -130,7 +132,9 @@ with sync_playwright() as pw:
                title: document.getElementById('cardsTitle').textContent };
     }""")
     check("reward screen offers gods only", cards["trades"] == 0 and cards["weapons"] == 0, cards)
-    check("reward screen still shows god cards", cards["count"] >= 3, cards["count"])
+    check("reward screen offers exactly two gods",
+          cards["count"] == 2 and cards["want"] == 2, cards["count"])
+    check("the reward screen explains the pair", "Two gods" in cards["sub"], cards["sub"])
 
     # A god card no longer binds itself: it opens the slot chooser, and the
     # binding only happens when the player says where the power goes.

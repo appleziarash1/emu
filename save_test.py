@@ -171,8 +171,8 @@ with sync_playwright() as pw:
       const cards = [...document.querySelectorAll('#cards .card b')].map((b) => b.textContent);
       return { mode: window.__game.mode, cards };
     }""")
-    check("clearing a chamber opens the reward screen with three gods",
-          offer["mode"] == "reward" and len(offer["cards"]) == 3, offer)
+    check("clearing a chamber opens the reward screen with two gods",
+          offer["mode"] == "reward" and len(offer["cards"]) == 2, offer)
 
     page.evaluate("() => window.__game.save()")
     page.reload(wait_until="load")

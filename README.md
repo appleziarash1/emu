@@ -15,13 +15,14 @@ the gate.
 
 ## Gods and boons
 
-Eleven gods, each with a different reward for each of the three moves. Taking a
-god's favour does not decide where it goes: the reward card opens a chooser with
-one option per move, and the option the god naturally favours is flagged
+Eleven gods, each with a different reward for each of the three moves. A cleared
+chamber offers **two** gods; take one and it opens a chooser with one option per
+move, and the option the god naturally favours is flagged
 **SUGGESTED**. Bound powers live in three slots — Strike, Special, Spell — and a
 power only changes the move it was bound to. Zeus on Strike chains lightning to
 the foes beside your target; Zeus on Spell makes the burst arc instead. Binding a
-second god into a slot replaces what was there.
+second god into a slot replaces what was there. `OFFER_COUNT` in `index.html`
+sets how many gods a chamber offers.
 
 | God | Theme |
 | --- | --- |

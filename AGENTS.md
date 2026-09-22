@@ -82,8 +82,11 @@ Single-file canvas roguelike PWA. No build step: `index.html` is the whole game,
   `shieldMax`, ...) plus the slot flags, not by replaying `apply()`, which would
   double them.
 - A pending reward choice is stored as `state.offer` (god ids) so a resume shows
-  the same three, and `pendingPower` for a god picked but not yet slotted.
-  `saveRun()` records `mode` so the check can pick the mode it resumes into.
+  the same pair, and `pendingPower` for a god picked but not yet slotted. How
+  many gods a chamber offers is `OFFER_COUNT` (2); it is mirrored on
+  `window.__game.offerCount` so the suites check the shipping value instead of
+  hardcoding a number. `saveRun()` records `mode` so the check can pick the mode
+  it resumes into.
 - A god variant's `flags` are only read by the combat code for the slot it was
   bound to: `swing`/`applyStrikeEffects` read `state.se.attack`, the chakram
   branch of the projectile update reads `state.se.special`, and `castSpell`
