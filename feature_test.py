@@ -132,9 +132,10 @@ with sync_playwright() as pw:
                title: document.getElementById('cardsTitle').textContent };
     }""")
     check("reward screen offers gods only", cards["trades"] == 0 and cards["weapons"] == 0, cards)
-    check("reward screen offers exactly two gods",
-          cards["count"] == 2 and cards["want"] == 2, cards["count"])
-    check("the reward screen explains the pair", "Two gods" in cards["sub"], cards["sub"])
+    check("reward screen offers as many gods as the offer promises",
+          cards["count"] == cards["want"] and cards["want"] >= 4, cards)
+    check("the reward screen explains how many gods are on offer",
+          "gods offer a favour" in cards["sub"], cards["sub"])
 
     # A god card no longer binds itself: it opens the slot chooser, and the
     # binding only happens when the player says where the power goes.
@@ -148,7 +149,7 @@ with sync_playwright() as pw:
                after: g.state.weapon.id };
     }""")
     check("picking a god opens the slot chooser",
-          picked["mode"] == "slot" and picked["slots"] == 3, picked)
+          picked["mode"] == "slot" and picked["slots"] == 4, picked)
     check("the chooser flags a suggested slot", picked["suggested"] >= 1, picked)
 
     bound = page.evaluate("""() => {

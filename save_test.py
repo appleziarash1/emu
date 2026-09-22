@@ -175,10 +175,10 @@ with sync_playwright() as pw:
     page.wait_for_timeout(300)
     offer = page.evaluate("""() => {
       const cards = [...document.querySelectorAll('#cards .card b')].map((b) => b.textContent);
-      return { mode: window.__game.mode, cards };
+      return { mode: window.__game.mode, cards, want: window.__game.offerCount };
     }""")
-    check("clearing a chamber opens the reward screen with two gods",
-          offer["mode"] == "reward" and len(offer["cards"]) == 2, offer)
+    check("clearing a chamber opens the reward screen with a spread of gods",
+          offer["mode"] == "reward" and len(offer["cards"]) == offer["want"], offer)
 
     page.evaluate("() => window.__game.save()")
     page.reload(wait_until="load")
@@ -202,7 +202,7 @@ with sync_playwright() as pw:
                god: first.querySelector('em').textContent };
     }""")
     check("picking a god moves on to the slot chooser",
-          chosen["mode"] == "slot" and chosen["slots"] == 3, chosen)
+          chosen["mode"] == "slot" and chosen["slots"] == 4, chosen)
 
     page.evaluate("() => window.__game.save()")
     page.reload(wait_until="load")
@@ -215,7 +215,7 @@ with sync_playwright() as pw:
       return { mode: g.mode, slots: slots.length, pending: g.state.pendingPower };
     }""")
     check("an interrupted slot choice comes back the same",
-          held["mode"] == "slot" and held["slots"] == 3 and held["pending"] is not None, held)
+          held["mode"] == "slot" and held["slots"] == 4 and held["pending"] is not None, held)
 
     slotName = page.evaluate("""() => {
       const first = document.querySelector('#slots .slot');

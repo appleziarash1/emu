@@ -169,6 +169,18 @@
   .slot.eq { border-color: #7fd4ff66; }
   .slot .eqtag { position: absolute; right: 12px; top: 10px; font-size: 10px; font-weight: 800;
                  color: #dff3ff; background: #3c6f8c; border-radius: 999px; padding: 3px 8px; }
+  /* Rarity is the boon's quality tier — Normal, Rare, Epic, Duo, Legendary — and
+     it is always printed, so a card never has to be decoded to be judged. */
+  .tag.normal    { background: #b9b2c9; color: #201636; }
+  .tag.rare      { background: #6fb3ff; color: #0b2140; }
+  .tag.epic      { background: #c58cff; color: #250f42; }
+  .tag.duo       { background: #ff9de0; color: #3d0f2c; }
+  .tag.legendary { background: #ffd479; color: #2a1740; box-shadow: 0 0 10px #ffd47999; }
+  .card .tag { position: absolute; right: 12px; top: 10px; font-size: 10px; font-weight: 800;
+               letter-spacing: .06em; border-radius: 999px; padding: 3px 8px; }
+  .card { position: relative; }
+  .card.legendary { border-color: #ffd479aa; background: #ffd47914; }
+  .card.duo { border-color: #ff9de066; }
 
   #shopBody { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
               gap: 10px; width: min(560px, 90vw); max-height: 52vh; overflow-y: auto; margin: 4px 0; }
@@ -707,172 +719,268 @@
     { id: 'attack',  label: 'Attack',  blurb: 'your STRIKE',  key: 'strike' },
     { id: 'special', label: 'Special', blurb: 'your SPECIAL', key: 'special' },
     { id: 'spell',   label: 'Spell',   blurb: 'your SPELL',   key: 'spell' },
+    { id: 'dash',    label: 'Dash',    blurb: 'your DASH',    key: 'dash' },
   ];
 
-  // How many gods a cleared chamber offers. Two keeps the choice a real
-  // decision without either option being obviously the only one.
-  const OFFER_COUNT = 2;
+  // How many gods a cleared chamber offers. Hades hands you a fistful rather
+  // than a pair, and the run only turns on a real decision when the shelf is
+  // wide enough that a favourite cannot always appear. Four out of eleven.
+  const OFFER_COUNT = 4;
+
+  // ------------------------------------------------------------- boon rarity
+  // Every offer carries a rarity, and the rarity is always printed on the card
+  // so a player never has to reverse-engineer how strong a boon is. The tiers
+  // are the five Hades uses. `perk` is what the rarity is worth: it scales the
+  // move the boon lands on, so a Legendary Thunder Strike hits harder than a
+  // Normal one even though it is the same power. `w` is the base share of the
+  // roll, and the table shifts upward with depth so a deep run sees better
+  // offers — but Legendary stays under two percent at every depth.
+  const RARITY = {
+    normal:    { label: 'Normal',    perk: 1.00, w: 60 },
+    rare:      { label: 'Rare',      perk: 1.10, w: 26 },
+    epic:      { label: 'Epic',      perk: 1.22, w: 9 },
+    duo:       { label: 'Duo',       perk: 1.35, w: 3.5 },
+    legendary: { label: 'Legendary', perk: 1.55, w: 1.0 },
+  };
+  const RARITY_ORDER = ['normal', 'rare', 'epic', 'duo', 'legendary'];
+
+  // Roll one rarity. The base table is nudged toward the top by depth: each tier
+  // gains a little weight per chamber, which is why a late run is worth playing
+  // into. Legendary keeps a floor and a cap so it can never become routine.
+  function rollRarity(depth) {
+    const lift = Math.min(1.0, (depth - 1) / 30);
+    const weights = {};
+    for (const id of RARITY_ORDER) {
+      let w = RARITY[id].w;
+      if (id !== 'normal') w *= 1 + lift * 1.6;
+      if (id === 'normal') w *= 1 - lift * 0.55;
+      if (id === 'legendary') w = clamp(w, 0.8, 3);
+      weights[id] = Math.max(0.2, w);
+    }
+    const total = Object.values(weights).reduce((a, b) => a + b, 0);
+    let r = Math.random() * total;
+    for (const id of RARITY_ORDER) {
+      r -= weights[id];
+      if (r <= 0) return id;
+    }
+    return 'normal';
+  }
+
+  // The rarity's worth, applied when the power is bound. It is a single scaling
+  // pass over the stats a boon may touch, so a boon does not need its own
+  // rarity math and the tiers stay comparable across gods.
+  function applyRarityPerk(s, rarity) {
+    const perk = (RARITY[rarity] || RARITY.normal).perk;
+    if (perk === 1) return;
+    s.dmg *= perk;
+    s.reach *= 1 + (perk - 1) * 0.35;
+    s.knock *= 1 + (perk - 1) * 0.35;
+    if (s.splCdMax) s.splCdMax *= 1 - (perk - 1) * 0.25;
+    if (s.specCdMax) s.specCdMax *= 1 - (perk - 1) * 0.25;
+    if (s.dashCdMax) s.dashCdMax *= 1 - (perk - 1) * 0.25;
+  }
+
+  // The offer list had a bare id before rarity existed; an id on its own is read
+  // as a Normal offer so an older save still resumes with a legal choice.
+  function offerEntry(id, rarity) { return { id, rarity: rarity || 'normal' }; }
+  function offerRarityOf(entry) {
+    return (entry && RARITY[entry.rarity]) ? entry.rarity : 'normal';
+  }
 
   const GODS = [
     {
       id: 'zeus', god: 'Zeus', theme: 'chain lightning',
       variants: {
-        attack: { name: 'Thunder Strike', rec: true,
+        attack: { name: 'Thunder Strike', rarity: 'rare',
           desc: 'A struck foe arcs lightning to those beside it, and your reach grows.',
           apply: (s) => { s.reach *= 1.25; }, flags: { chain: true } },
-        special: { name: 'Storm Blade', rec: true,
+        special: { name: 'Storm Blade', rarity: 'rare',
           desc: 'Foes the blade cuts arc lightning to those beside them.',
           apply: (s) => { s.reach *= 1.1; }, flags: { specChain: true, trail: 'spark' } },
-        spell: { name: 'Thunder Nova', rec: true,
+        spell: { name: 'Thunder Nova', rarity: 'epic',
           desc: 'The burst arcs lightning outward, chaining to every nearby foe.',
           apply: (s) => { s.splCdMax *= 0.9; }, flags: { novaChain: true } },
+        dash: { name: 'Thunder Rush', rarity: 'rare',
+          desc: 'You become the bolt: the dash scorches every foe it passes through.',
+          apply: (s) => { s.dashPow *= 1.1; }, flags: { dashZap: true } },
       },
     },
     {
       id: 'athena', god: 'Athena', theme: 'aegis and reflection',
       variants: {
-        attack: { name: 'Shield Bash', rec: false,
+        attack: { name: 'Shield Bash', rarity: 'normal',
           desc: 'Your strikes knock foes back hard and raise a shield each chamber.',
           apply: (s) => { s.knock += 150; s.shieldMax += 1; s.shield = s.shieldMax; },
           flags: {} },
-        special: { name: 'Aegis Throw', rec: true,
+        special: { name: 'Aegis Throw', rarity: 'rare',
           desc: 'The blade shields you as it flies, and its return restores the aegis.',
           apply: (s) => { s.shieldMax += 1; s.shield = s.shieldMax; }, flags: { specShield: true } },
-        spell: { name: 'Bulwark', rec: true,
+        spell: { name: 'Bulwark', rarity: 'epic',
           desc: 'The burst leaves a longer shield and reflects every shot it catches.',
           apply: (s) => { s.shieldMax += 1; s.shield = s.shieldMax; },
           flags: { novaShield: true, reflect: true } },
+        dash: { name: 'Aegis Charge', rarity: 'normal',
+          desc: 'You dash behind a raised shield, taking no harm on the way through.',
+          apply: (s) => { s.shieldMax += 1; }, flags: { dashGuard: true } },
       },
     },
     {
       id: 'poseidon', god: 'Poseidon', theme: 'tidal force',
       variants: {
-        attack: { name: 'Tidal Sweep', rec: true,
+        attack: { name: 'Tidal Sweep', rarity: 'rare',
           desc: 'Your strikes send foes sliding away in a surge of water.',
           apply: (s) => { s.knock += 220; }, flags: { wave: true } },
-        special: { name: 'Riptide', rec: true,
+        special: { name: 'Riptide', rarity: 'rare',
           desc: 'The blade drags foes back toward you on its return.',
           apply: (s) => { s.knock += 80; }, flags: { drag: true } },
-        spell: { name: 'Maelstrom', rec: true,
+        spell: { name: 'Maelstrom', rarity: 'epic',
           desc: 'The burst pulls everything nearby into its centre and hurls it out.',
           apply: (s) => { s.knock += 120; }, flags: { novaPull: true } },
+        dash: { name: 'Undertow', rarity: 'rare',
+          desc: 'A wave goes with you: foes you dash past are dragged along in your wake.',
+          apply: (s) => { s.knock += 90; }, flags: { dashWave: true } },
       },
     },
     {
       id: 'ares', god: 'Ares', theme: 'raw bloodshed',
       variants: {
-        attack: { name: 'Blade Rush', rec: true,
+        attack: { name: 'Blade Rush', rarity: 'rare',
           desc: 'Your strikes hit for a third more damage.',
           apply: (s) => { s.dmg *= 1.33; }, flags: {} },
-        special: { name: 'Whirling Doom', rec: true,
+        special: { name: 'Whirling Doom', rarity: 'rare',
           desc: 'The blade hits far harder and cuts deeper on the way home.',
           apply: (s) => { s.dmg *= 1.2; }, flags: { specHeavy: true } },
-        spell: { name: 'Blood Nova', rec: true,
+        spell: { name: 'Blood Nova', rarity: 'epic',
           desc: 'The burst wounds you a little and hits everything much harder.',
           apply: (s) => { s.dmg *= 1.15; }, flags: { novaBlood: true } },
+        dash: { name: 'Rampage', rarity: 'normal',
+          desc: 'The dash becomes a charge, tearing into everything it runs through.',
+          apply: (s) => { s.dmg *= 1.08; }, flags: { dashRend: true } },
       },
     },
     {
       id: 'artemis', god: 'Artemis', theme: 'hunt and crit',
       variants: {
-        attack: { name: "Hunter's Aim", rec: true,
+        attack: { name: "Hunter's Aim", rarity: 'rare',
           desc: 'Your strikes crit for double damage on a good roll.',
           apply: (s) => { s.speed *= 1.1; }, flags: { crit: 0.28 } },
-        special: { name: 'Deadly Throw', rec: true,
+        special: { name: 'Deadly Throw', rarity: 'epic',
           desc: 'The blade crits and travels faster and farther.',
           apply: (s) => { s.speed *= 1.1; }, flags: { specCrit: 0.35 } },
-        spell: { name: 'Moonlight', rec: false,
+        spell: { name: 'Moonlight', rarity: 'normal',
           desc: 'The burst crits on everything it touches.',
           apply: (s) => { s.speed *= 1.08; }, flags: { novaCrit: 0.3 } },
+        dash: { name: 'Hunter\'s Leap', rarity: 'rare',
+          desc: 'The dash crits on anything it crosses, for double damage on a good roll.',
+          apply: (s) => { s.speed *= 1.08; }, flags: { dashCrit: 0.3 } },
       },
     },
     {
       id: 'aphrodite', god: 'Aphrodite', theme: 'charm and healing',
       variants: {
-        attack: { name: 'Sweet Pain', rec: false,
+        attack: { name: 'Sweet Pain', rarity: 'normal',
           desc: 'Foes you strike are charmed and weakened, hitting for less.',
           apply: (s) => { s.maxHp += 20; s.hp = Math.min(s.maxHp, s.hp + 30); },
           flags: { weaken: true } },
-        special: { name: 'Heartseeker', rec: true,
+        special: { name: 'Heartseeker', rarity: 'rare',
           desc: 'The blade charms every foe it cuts and heals you as it returns.',
           apply: (s) => { s.maxHp += 20; }, flags: { specCharm: true } },
-        spell: { name: 'Empathy', rec: true,
+        spell: { name: 'Empathy', rarity: 'epic',
           desc: 'The burst charms attackers and mends a chunk of your wounds.',
           apply: (s) => { s.maxHp += 20; s.hp = Math.min(s.maxHp, s.hp + 40); },
           flags: { novaHeal: 24, novaCharm: true } },
+        dash: { name: 'Loving Embrace', rarity: 'rare',
+          desc: 'Foes you dash past are charmed, and you mend a little of the harm done.',
+          apply: (s) => { s.maxHp += 15; }, flags: { dashCharm: true, dashHeal: 6 } },
       },
     },
     {
       id: 'demeter', god: 'Demeter', theme: 'frost',
       variants: {
-        attack: { name: 'Frostbite', rec: true,
+        attack: { name: 'Frostbite', rarity: 'rare',
           desc: 'Struck foes are chilled, moving and striking far slower.',
           apply: (s) => { s.dmg *= 1.05; }, flags: { frost: 1.8 } },
-        special: { name: 'Glacial Edge', rec: true,
+        special: { name: 'Glacial Edge', rarity: 'rare',
           desc: 'The blade leaves a lasting chill on everything it cuts.',
           apply: (s) => { s.dmg *= 1.05; }, flags: { specFrost: true } },
-        spell: { name: 'Winter Burst', rec: true,
+        spell: { name: 'Winter Burst', rarity: 'epic',
           desc: 'The burst freezes nearby foes in place for a moment.',
           apply: (s) => { s.splCdMax *= 0.85; }, flags: { novaFreeze: 1.2 } },
+        dash: { name: 'Cold Trail', rarity: 'rare',
+          desc: 'The ground you dash over stays frozen, chilling anyone who follows.',
+          apply: (s) => { s.splCdMax *= 0.95; }, flags: { dashFrost: 1.6 } },
       },
     },
     {
       id: 'hermes', god: 'Hermes', theme: 'speed',
       variants: {
-        attack: { name: 'Fleet Blade', rec: false,
+        attack: { name: 'Fleet Blade', rarity: 'normal',
           desc: 'Your strikes come faster, so you can chain them.',
           apply: (s) => { s.speed *= 1.15; s.weapon.cooldown *= 0.8; }, flags: {} },
-        special: { name: 'Quick Return', rec: true,
+        special: { name: 'Quick Return', rarity: 'rare',
           desc: 'The blade comes back sooner and flies out again almost at once.',
           apply: (s) => { s.speed *= 1.1; s.specCdMax *= 0.75; }, flags: { specFast: true } },
-        spell: { name: 'Winged Step', rec: true,
+        spell: { name: 'Winged Step', rarity: 'epic',
           desc: 'The burst recharges much faster and briefly speeds you up.',
           apply: (s) => { s.splCdMax *= 0.7; }, flags: { novaHaste: true } },
+        dash: { name: 'Hyper Dash', rarity: 'rare',
+          desc: 'The dash goes farther and its cooldown almost vanishes.',
+          apply: (s) => { s.dashPow *= 1.35; s.dashCdMax *= 0.6; }, flags: {} },
       },
     },
     {
       id: 'dionysus', god: 'Dionysus', theme: 'hangover and poison',
       variants: {
-        attack: { name: 'Drunken Fist', rec: false,
+        attack: { name: 'Drunken Fist', rarity: 'normal',
           desc: 'Fallen foes leave a lingering damaging mist where they drop.',
           apply: (s) => { s.maxHp += 15; }, flags: { fume: true } },
-        special: { name: 'Wine Throw', rec: true,
+        special: { name: 'Wine Throw', rarity: 'rare',
           desc: 'The blade leaves pools of poison mist along the path it cuts.',
           apply: (s) => { s.maxHp += 15; }, flags: { specMist: true } },
-        spell: { name: 'Hangover Nova', rec: true,
+        spell: { name: 'Hangover Nova', rarity: 'epic',
           desc: 'The burst leaves a ring of poison mist around you.',
           apply: (s) => { s.maxHp += 15; }, flags: { novaMist: true } },
+        dash: { name: 'Spill', rarity: 'normal',
+          desc: 'You spill a trail of poison mist behind you as you dash.',
+          apply: (s) => { s.maxHp += 15; }, flags: { dashMist: true } },
       },
     },
     {
       id: 'hephaestus', god: 'Hephaestus', theme: 'forge and fire',
       variants: {
-        attack: { name: 'Forge Blast', rec: true,
+        attack: { name: 'Forge Blast', rarity: 'rare',
           desc: 'Each strike has a chance to explode for heavy area damage.',
           apply: (s) => { s.dmg *= 1.1; }, flags: { blast: 0.35 } },
-        special: { name: 'Molten Blade', rec: false,
+        special: { name: 'Molten Blade', rarity: 'normal',
           desc: 'The blade burns foes, leaving them damaged over time.',
           apply: (s) => { s.dmg *= 1.1; }, flags: { specBurn: true } },
-        spell: { name: 'Volcanic Burst', rec: true,
+        spell: { name: 'Volcanic Burst', rarity: 'epic',
           desc: 'The burst leaves burning ground that scorches anyone standing on it.',
           apply: (s) => { s.dmg *= 1.08; }, flags: { novaFire: true } },
+        dash: { name: 'Blazing Rush', rarity: 'rare',
+          desc: 'You leave burning ground in your wake, scorching whoever crosses it.',
+          apply: (s) => { s.dmg *= 1.06; }, flags: { dashFire: true } },
       },
     },
     {
       id: 'chaos', god: 'Chaos', theme: 'power at a price',
       variants: {
-        attack: { name: 'Cursed Edge', rec: false,
+        attack: { name: 'Cursed Edge', rarity: 'duo',
           desc: 'Your strikes hit twice as hard, but you carry 20 less max health.',
           apply: (s) => { s.dmg *= 2; s.maxHp = Math.max(40, s.maxHp - 20); s.hp = Math.min(s.hp, s.maxHp); },
           flags: {} },
-        special: { name: 'Cursed Throw', rec: false,
+        special: { name: 'Cursed Throw', rarity: 'duo',
           desc: 'The blade hits twice as hard, but you carry 20 less max health.',
           apply: (s) => { s.dmg *= 1.8; s.maxHp = Math.max(40, s.maxHp - 20); s.hp = Math.min(s.hp, s.maxHp); },
           flags: {} },
-        spell: { name: 'Chaos Nova', rec: true,
+        spell: { name: 'Chaos Nova', rarity: 'epic',
           desc: 'The burst hits twice as hard and recharges fast, at a health cost.',
           apply: (s) => { s.dmg *= 1.6; s.splCdMax *= 0.7; s.maxHp = Math.max(40, s.maxHp - 20); s.hp = Math.min(s.hp, s.maxHp); },
           flags: {} },
+        dash: { name: 'Chaos Step', rarity: 'duo',
+          desc: 'The dash hits twice as hard, but you carry 10 less max health.',
+          apply: (s) => { s.dmg *= 1.5; s.dashPow *= 1.15; s.maxHp = Math.max(40, s.maxHp - 10); s.hp = Math.min(s.hp, s.maxHp); },
+          flags: { dashRend: true } },
       },
     },
   ];
@@ -922,10 +1030,10 @@
       swingT: 0, swingCd: 0, weapon,
       // One power per slot. se[slot] holds that slot's effect flags, so a Zeus
       // bound to Spell cannot switch on an Attack effect.
-      slots: { attack: null, special: null, spell: null },
-      se: { attack: {}, special: {}, spell: {} },
+      slots: { attack: null, special: null, spell: null, dash: null },
+      se: { attack: {}, special: {}, spell: {}, dash: {} },
       xp: 0, level: 1, obols: 0,
-      depth: 1, kills: 0, boons: [], takenIds: {}, offer: null, tAcc: 0,
+      depth: 1, kills: 0, boons: [], takenIds: {}, offer: null, tAcc: 0, bossShopDepth: 0, pendingRarity: null,
     };
     state.hp = state.maxHp;
     newRoom();
@@ -1019,7 +1127,7 @@
   // foes into it.
   function buildRoom(w, h, door, entry, seed) {
     seedRng(seed);
-    room = { w, h, enemies: [], projectiles: [], t: 0, mist: [], fire: [], floaters: [],
+    room = { w, h, enemies: [], projectiles: [], t: 0, mist: [], fire: [], frost: [], floaters: [],
              cleared: false, isBoss: state.depth % 5 === 0, seed, door, entry };
     state.player = { x: w / 2, y: h / 2, hx: 0, hy: 0, r: 15, kx: 0, ky: 0 };
 
@@ -1174,13 +1282,24 @@
     // The Warden is far too big to fit between the stones, so it is placed clear of
     // them rather than being made to squeeze past.
     pushOutOfBarriers(spot, 44);
+    // Every boss is five times the boss before it. The base is the depth-5
+    // Warden, so depth 10 is exactly 5x, depth 15 exactly 25x, and so on. Health
+    // takes the full curve; speed and damage take a gentler share of it, capped,
+    // because a boss that is both 625x tougher and 625x harder-hitting stops
+    // being a fight and starts being a wall.
+    const scale = Math.pow(5, Math.max(0, tier - 1));
+    const BASE_HP = 340 + 5 * 95;
+    const hp = Math.round(BASE_HP * scale);
     room.enemies.push({
       kind: 'boss', x: spot.x, y: spot.y, r: 38,
-      hp: 340 + depth * 95, max: 340 + depth * 95,
-      speed: 46 + depth * 1.4, dmg: 20 + depth * 1.6, color: '#e0a44e',
-      atk: 0, shoot: 1.6, charging: 0, tier,
+      hp, max: hp,
+      speed: Math.min(260, (46 + depth * 1.4) * (1 + (scale - 1) * 0.10)),
+      dmg: (20 + depth * 1.6) * Math.min(5, 1 + (scale - 1) * 0.07),
+      color: '#e0a44e',
+      atk: 0, shoot: 1.6, charging: 0, tier, scale,
     });
-    toast(room.bossName.toUpperCase() + ' blocks the way');
+    toast(room.bossName.toUpperCase() + ' blocks the way' +
+          (scale > 1 ? ' — ' + scale + '× the last' : ''));
   }
 
   // ---------------------------------------------------------------- combat
@@ -1250,11 +1369,16 @@
   function applyStrikeEffects(e, dmg, lx, ly) {
     const se = state.se.attack || {};
     if (se.chain) {
+      // The arc is the boon's whole point, so it has to be worth chasing: the
+      // splash reaches most of a pack and carries enough of the blow to fell a
+      // weakened foe, rather than shaving a sliver off one that was missed.
+      const arcs = [];
       for (const o of room.enemies) {
         if (o === e || o.dead) continue;
-        if (dist(o, e) < 140) hurtEnemy(o, dmg * 0.6, { x: lx, y: ly });
+        if (dist(o, e) < 190) { hurtEnemy(o, dmg * 0.85, { x: lx, y: ly }); arcs.push(o); }
       }
-      room.projectiles.push({ x: e.x, y: e.y, t: 0.18, kind: 'spark' });
+      room.projectiles.push({ x: e.x, y: e.y, t: 0.2, kind: 'spark' });
+      for (const o of arcs) room.projectiles.push({ x: o.x, y: o.y, t: 0.2, kind: 'spark' });
     }
     if (se.wave) room.projectiles.push({ x: e.x, y: e.y, t: 0.4, kind: 'wave', r: 70 });
     if (se.frost) e.slowed = Math.max(e.slowed || 0, se.frost);
@@ -1264,6 +1388,45 @@
       for (const o of room.enemies) if (o !== e && dist(o, e) < 95) hurtEnemy(o, dmg * 0.8, null);
       room.projectiles.push({ x: e.x, y: e.y, t: 0.22, kind: 'blast', r: 95 });
     }
+  }
+
+  // The dash's own boons. A dash is a movement verb first, so these never make
+  // it mandatory: each one adds something that happens to the foes the hero
+  // passes *through*, and the hit list keeps a single dash from damaging the
+  // same foe on every frame it overlaps. Every effect reads se.dash only, so
+  // binding Zeus to Strike cannot put lightning on the dash.
+  function applyDashEffects(p) {
+    const sd = state.se.dash || {};
+    const offensive = sd.dashZap || sd.dashRend || sd.dashCrit ||
+                      sd.dashWave || sd.dashCharm || sd.dashFrost;
+    if (sd.dashGuard) state.shield = Math.min(state.shieldMax, state.shield + 1);
+    if (sd.dashFrost) room.frost = room.frost || [], room.frost.push({ x: p.x, y: p.y, r: 40, t: 1.2 });
+    if (sd.dashMist) room.mist.push({ x: p.x, y: p.y, r: 40, t: 1.4 });
+    if (sd.dashFire) room.fire = room.fire || [], room.fire.push({ x: p.x, y: p.y, r: 34, t: 0.8 });
+    if (!offensive) return;
+
+    state.dashHits = state.dashHits || [];
+    for (const e of room.enemies) {
+      if (e.dead || state.dashHits.includes(e)) continue;
+      if (dist(e, p) > e.r + p.r + 10) continue;
+      state.dashHits.push(e);
+      const dir = { x: p.kx || p.faceX, y: p.ky || p.faceY };
+      let dmg = state.dmg * (sd.dashRend ? 1.6 : sd.dashZap ? 0.9 : sd.dashCrit ? 1.0 : 0.6);
+      let crit = false;
+      if (sd.dashCrit && Math.random() < sd.dashCrit) { dmg *= 2; crit = true; }
+      hurtEnemy(e, dmg, dir, crit);
+      if (sd.dashZap) {
+        for (const o of room.enemies) {
+          if (o === e || o.dead) continue;
+          if (dist(o, e) < 150) hurtEnemy(o, dmg * 0.7, dir);
+        }
+        room.projectiles.push({ x: e.x, y: e.y, t: 0.2, kind: 'spark' });
+      }
+      if (sd.dashWave) { e.kx = dir.x * ((state.knock || 0) + 120); e.ky = dir.y * ((state.knock || 0) + 120); }
+      if (sd.dashFrost) e.slowed = Math.max(e.slowed || 0, sd.dashFrost);
+      if (sd.dashCharm) { e.weaken = 6; e.weakenT = 0.5; }
+    }
+    if (sd.dashHeal) state.hp = Math.min(state.maxHp, state.hp + sd.dashHeal);
   }
 
   // The spell is a slow, wide, self-centred burst: the panic button. Its cooldown
@@ -1527,6 +1690,13 @@
     mode = 'playing';
     saveRun();
     toast('Depth ' + state.depth);
+    // A boss gate is where a run can be lost, so the market opens the moment the
+    // boss chamber is entered: spend what the last floors earned and walk in
+    // prepared. It is a chance, not a toll — Back skips straight to the fight.
+    if (room.isBoss && state.bossShopDepth !== state.depth) {
+      state.bossShopDepth = state.depth;
+      openShop();
+    }
   }
 
   function drawCorridor(t) {
@@ -1725,7 +1895,11 @@
       state.dashT = 0.16; state.dashCd = state.dashCdMax; state.inv = Math.max(state.inv, 0.22);
       const dx = ml > 0.05 ? mx / ml : p.faceX, dy = ml > 0.05 ? my / ml : p.faceY;
       p.kx = dx * state.dashPow; p.ky = dy * state.dashPow;
+      // Every dashing frame sweeps for foes to run through, but the hit list is
+      // reset here so a new dash can touch a foe the last one already crossed.
+      state.dashHits = [];
     }
+    if (state.dashT > 0) applyDashEffects(p);
     const wantHit = held.hit || kb.hit || pressBuf.hit > 0 || padHitNow;
     if (wantHit) { pressBuf.hit = 0; swing(); }
     const wantSpell = held.spell || pressBuf.spell > 0 || padSpellNow;
@@ -1933,6 +2107,17 @@
     }
     room.fire = room.fire.filter((f) => f.t > 0);
 
+    // Frozen ground left by a frost dash: it chills whoever walks over it, so
+    // the trail keeps working after the dash itself has ended.
+    for (const f of room.frost || []) {
+      f.t -= dt;
+      for (const e of room.enemies) {
+        if (e.dead) continue;
+        if (dist(e, f) < f.r + e.r) e.slowed = Math.max(e.slowed || 0, 0.5);
+      }
+    }
+    room.frost = (room.frost || []).filter((f) => f.t > 0);
+
     for (const fl of room.floaters) fl.t -= dt;
     room.floaters = room.floaters.filter((fl) => fl.t > 0);
 
@@ -2033,63 +2218,118 @@
     }
   }
 
+  // Roll a set of distinct rarities, one per offered card. Drawing without
+  // replacement means a shelf shows four different labels instead of four
+  // identical ones, which is what makes the tiers readable at a glance. The
+  // weighting still leans on Normal at the shallow depths, and Legendary keeps
+  // its tiny share, so a screen of four Legendaries is not something that
+  // happens — a single one is the lucky draw.
+  function rollRaritySet(n, depth) {
+    const lift = Math.min(1.0, (depth - 1) / 30);
+    const pool = RARITY_ORDER.slice();
+    const out = [];
+    while (out.length < n && pool.length) {
+      const weights = pool.map((id) => {
+        let w = RARITY[id].w;
+        if (id !== 'normal') w *= 1 + lift * 1.6;
+        else w *= 1 - lift * 0.55;
+        if (id === 'legendary') w = clamp(w, 0.8, 3);
+        return Math.max(0.2, w);
+      });
+      const total = weights.reduce((a, b) => a + b, 0);
+      let r = Math.random() * total, pick = pool[pool.length - 1];
+      for (let i = 0; i < pool.length; i++) {
+        r -= weights[i];
+        if (r <= 0) { pick = pool[i]; break; }
+      }
+      out.push(pick);
+      pool.splice(pool.indexOf(pick), 1);
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------------------- reward
+  // A cleared chamber offers a spread of gods, each rolled at its own rarity.
+  // The rarity is stored with the offer, so the card a player sees is exactly
+  // what they take into the slot chooser.
+  function rollOffers() {
+    const pool = GODS.slice();
+    const out = [];
+    const rarities = rollRaritySet(OFFER_COUNT, state.depth);
+    let i = 0;
+    while (out.length < OFFER_COUNT && pool.length) {
+      const g = pool.splice(randi(0, pool.length - 1), 1)[0];
+      out.push(offerEntry(g.id, rarities[i++] || rollRarity(state.depth)));
+    }
+    return out;
+  }
+
   function openReward() {
     mode = 'reward';
-    // On a resume the same pair of gods comes back, so leaving mid-choice and
-    // returning does not reroll the offer.
-    let pick;
+    // On a resume the same offers come back, so leaving mid-choice and returning
+    // does not reroll the shelf.
+    let offers;
     if (state.offer && state.offer.length) {
-      pick = state.offer.map((id) => GODS.find((g) => g.id === id)).filter(Boolean);
+      offers = state.offer.map((o) => {
+        const id = typeof o === 'string' ? o : o.id;
+        return offerEntry(id, offerRarityOf(o));
+      });
     } else {
-      const pool = GODS.slice();
-      pick = [];
-      while (pick.length < OFFER_COUNT && pool.length) {
-        pick.push(pool.splice(randi(0, pool.length - 1), 1)[0]);
-      }
+      offers = rollOffers();
     }
-    state.offer = pick.map((g) => g.id);
+    state.offer = offers;
+    const pick = offers.map((o) => ({ entry: o, god: GODS.find((g) => g.id === o.id) }))
+                       .filter((x) => x.god);
     const body = document.getElementById('cardsBody');
     body.innerHTML = '';
     document.getElementById('cardsTitle').textContent =
       'Depth ' + state.depth + ' cleared — choose one';
     document.getElementById('cardsSub').textContent =
-      'Two gods offer a favour. Take one, then decide which move it empowers.';
-    for (const g of pick) {
+      'Four gods offer a favour. Each card shows its rarity. Take one, then decide which move it empowers.';
+    for (const { entry, god } of pick) {
+      const r = RARITY[offerRarityOf(entry)];
       const el = document.createElement('button');
-      el.className = 'card';
+      el.className = 'card' + (entry.rarity === 'legendary' ? ' legendary'
+                              : entry.rarity === 'duo' ? ' duo' : '');
       el.type = 'button';
-      // The card names the god and shows the move the game would choose, so the
-      // choice reads as "Zeus, probably on Strike" rather than a bare stat line.
-      const best = SLOTS.find((s) => g.variants[s.id].rec) || SLOTS[0];
-      el.innerHTML = '<em>' + g.god.toUpperCase() + ' · ' + g.theme + '</em><b>' +
-        g.variants[best.id].name + '</b><span>' + g.variants[best.id].desc + '</span>';
-      el.addEventListener('click', () => offerSlots(g.id));
+      // The card names the god, its rarity and its strongest move, so the choice
+      // reads as "Zeus, Rare, probably Storm Blade" rather than a bare stat line.
+      const best = SLOTS.slice().sort((a, b) =>
+        RARITY_ORDER.indexOf(god.variants[b.id].rarity) -
+        RARITY_ORDER.indexOf(god.variants[a.id].rarity))[0];
+      el.innerHTML = '<span class="tag ' + entry.rarity + '">' + r.label.toUpperCase() + '</span>' +
+        '<em>' + god.god.toUpperCase() + ' · ' + god.theme + '</em><b>' +
+        god.variants[best.id].name + '</b><span>' + god.variants[best.id].desc + '</span>';
+      el.addEventListener('click', () => offerSlots(god.id, entry.rarity));
       body.appendChild(el);
     }
     show('cards');
   }
 
-  // The chooser: one card per move, the recommended one flagged. This is the
-  // "where do I put it" decision the run turns on.
-  function offerSlots(godId) {
+  // The chooser: one card per move, each showing what the god's power does there
+  // and the rarity it was offered at. This is the "where do I put it" decision
+  // the run turns on.
+  function offerSlots(godId, rarity) {
     const g = GODS.find((x) => x.id === godId);
     if (!g) return;
     state.pendingPower = godId;
+    state.pendingRarity = RARITY[rarity] ? rarity : 'normal';
     state.offer = null;
     mode = 'slot';
     hide('cards');
     saveRun();
 
+    const r = RARITY[state.pendingRarity];
     const body = document.getElementById('slotsBody');
     body.innerHTML = '';
     document.getElementById('slotsTitle').textContent = g.god + ' offers a favour';
     document.getElementById('slotsSub').textContent =
-      'Bind it to one move. The glowing card is what the game suggests for this god.';
+      'Bind it to one move. The card is offered at ' + r.label + ' rarity — all four are ' + r.label + '.';
     for (const slot of SLOTS) {
       const v = g.variants[slot.id];
       const held = state.slots[slot.id];
       const el = document.createElement('button');
-      el.className = 'slot' + (v.rec ? ' rec' : '') + (held ? ' eq' : '');
+      el.className = 'slot' + (held ? ' eq' : '');
       el.type = 'button';
       el.innerHTML =
         '<em>' + slot.label.toUpperCase() + ' · ' + slot.blurb + '</em>' +
@@ -2097,31 +2337,43 @@
         '<span>' + v.desc + '</span>' +
         (held ? '<span class="found">Replaces ' + held.god + ' — ' + held.name + '</span>'
               : '<span>' + slot.label + ' is empty</span>') +
-        (v.rec ? '<span class="tag">SUGGESTED</span>' : '');
-      el.addEventListener('click', () => bindPower(godId, slot.id));
+        '<span class="tag ' + state.pendingRarity + '">' + r.label.toUpperCase() + '</span>';
+      el.addEventListener('click', () => bindPower(godId, slot.id, state.pendingRarity));
       body.appendChild(el);
     }
     show('slots');
   }
 
-  function bindPower(godId, slotId) {
+  function bindPower(godId, slotId, rarity) {
     const g = GODS.find((x) => x.id === godId);
     if (!g) return;
     const v = g.variants[slotId];
+    // The rarity the card was drawn with is what the player gets, so the offer
+    // and the bound power can never disagree. A direct bind (a test, or an older
+    // call) falls back to the variant's own printed tier.
+    const r = RARITY[rarity] ? rarity : (RARITY[v.rarity] ? v.rarity : 'normal');
+    // The boon's own effect lands first, then the rarity perk scales the result,
+    // so the tier is a multiplier on top of whatever the power does.
     v.apply(state);
+    applyRarityPerk(state, r);
     // Only the flags for this slot move, so a later god in another slot cannot be
-    // undone by this one and the effects stay where the player put them.
+    // undone by this one and the effects stay where the player put them. The
+    // rarity rides on the slot record, not on `se`: `se` is read as combat flags
+    // and a non-flag key in there would look like one.
     state.se[slotId] = Object.assign({}, v.flags);
-    state.slots[slotId] = { god: g.god, godId: g.id, name: v.name, slot: slotId };
+    state.slots[slotId] = { god: g.god, godId: g.id, name: v.name, slot: slotId, rarity: r };
+    state.boons.push({ god: g.god, godId: g.id, name: v.name, slot: slotId, rarity: r });
+    state.takenIds[g.id] = (state.takenIds[g.id] || 0) + 1;
     state.pendingPower = null;
+    state.pendingRarity = null;
     hide('slots');
     hide('cards');
     mode = 'playing';
     saveRun();
-    toast(g.god + ' · ' + v.name + ' → ' + slotLabels[slotId]);
+    toast(g.god + ' · ' + v.name + ' [' + RARITY[r].label + '] → ' + slotLabels[slotId]);
   }
 
-  const slotLabels = { attack: 'Strike', special: 'Special', spell: 'Spell' };
+  const slotLabels = { attack: 'Strike', special: 'Special', spell: 'Spell', dash: 'Dash' };
 
   // -------------------------------------------------------------- gods' market
   // Mid-run only, the way Charon's shop works: the obols you are carrying are
@@ -2154,7 +2406,9 @@
         if (state.obols < item.price) { toast('Not enough obols'); return; }
         state.obols -= item.price;
         hide('shop');
-        offerSlots(g.id);
+        // A bought favour is rolled like a dropped one, so the market is a real
+        // alternative to clearing a chamber rather than a fixed normal-tier sink.
+        offerSlots(g.id, rollRarity(state.depth));
       });
       body.appendChild(el);
     }
@@ -2212,8 +2466,8 @@
   const SAVE_VERSION = 2;
   const SAVE_FIELDS = ['hp', 'maxHp', 'dmg', 'speed', 'reach', 'knock', 'arc', 'slow',
                        'mist', 'blast', 'shield', 'shieldMax', 'dashPow', 'dashCdMax',
-                       'splCdMax', 'specCdMax', 'slots', 'se', 'pendingPower',
-                       'xp', 'level', 'obols', 'depth', 'kills', 'boons', 'takenIds'];
+                       'splCdMax', 'specCdMax', 'slots', 'se', 'pendingPower', 'pendingRarity',
+                       'xp', 'level', 'obols', 'depth', 'kills', 'boons', 'takenIds', 'bossShopDepth'];
   // A save every few seconds, plus one at the moment the app is hidden, means a
   // run is at most a couple of blows old. Boon effects live in the saved numbers,
   // so nothing has to be re-applied on the way back in.
@@ -2230,7 +2484,8 @@
                      px: state.player.x, py: state.player.y,
                      cleared: !!room.cleared, enemies: room.enemies.map((e) => ({
                        kind: e.kind, x: e.x, y: e.y, hp: e.hp, max: e.max, shoot: e.shoot,
-                       tier: e.tier, bossName: room.bossName, name: e.name,
+                       tier: e.tier, scale: e.scale, speed: e.speed, dmg: e.dmg,
+                       bossName: room.bossName, name: e.name,
                      })) };
       for (const k of SAVE_FIELDS) data[k] = state[k];
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
@@ -2265,9 +2520,14 @@
     if (e.kind === 'boss') {
       const tier = e.tier || Math.floor(depth / 5);
       room.bossName = e.bossName || 'The Warden';
+      // The scaled stats ride in the save, so a boss picked back up mid-fight
+      // still hits and moves at the strength its scale earned instead of
+      // reverting to the unscaled depth formula.
       return { kind: 'boss', x: e.x, y: e.y, r: 38, hp: e.hp, max: e.max,
-               speed: 46 + depth * 1.4, dmg: 20 + depth * 1.6, color: '#e0a44e',
-               atk: 0, shoot: 1.6, charging: 0, tier };
+               speed: e.speed != null ? e.speed : 46 + depth * 1.4,
+               dmg: e.dmg != null ? e.dmg : 20 + depth * 1.6,
+               color: '#e0a44e', atk: 0, shoot: 1.6, charging: 0, tier,
+               scale: e.scale || 1 };
     }
     const base = {
       shade: { r: 14, hp: 26 + depth * 8, speed: 74 + depth * 3.4, dmg: 8 + depth, color: '#8f7bd8' },
@@ -2293,9 +2553,14 @@
     state.boons = data.boons || [];
     state.offer = data.offer || null;
     state.dashCd = 0; state.dashT = 0; state.inv = 0.75; state.swingT = 0; state.swingCd = 0;
-    state.slots = state.slots || { attack: null, special: null, spell: null };
-    state.se = state.se || { attack: {}, special: {}, spell: {} };
+    state.slots = state.slots || { attack: null, special: null, spell: null, dash: null };
+    state.se = state.se || { attack: {}, special: {}, spell: {}, dash: {} };
+    // An older save predates the dash slot, so fill in what it could not know
+    // about rather than letting a restored run miss the fourth move.
+    if (!state.slots.dash) state.slots.dash = null;
+    if (!state.se.dash) state.se.dash = {};
     state.pendingPower = state.pendingPower || null;
+    state.pendingRarity = state.pendingRarity || null;
 
     hide('menu'); hide('help'); hide('dead'); hide('cards');
     document.getElementById('hud').classList.add('on');
@@ -2315,7 +2580,7 @@
     mode = 'playing';
     // A choice left hanging comes back as the same choice: the god cards, or the
     // slot chooser if the god had already been picked.
-    if (state.pendingPower) offerSlots(state.pendingPower);
+    if (state.pendingPower) offerSlots(state.pendingPower, state.pendingRarity);
     else if (state.offer && state.offer.length) openReward();
     else toast('Depth ' + state.depth + ' — resumed');
     return true;
@@ -2354,6 +2619,17 @@
       const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r);
       g.addColorStop(0, '#ff9a3c');
       g.addColorStop(1, 'rgba(255,90,20,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // frozen ground
+    for (const f of room.frost || []) {
+      ctx.globalAlpha = clamp(f.t / 1.2, 0, 1) * 0.5;
+      const g = ctx.createRadialGradient(f.x, f.y, 0, f.x, f.y, f.r);
+      g.addColorStop(0, '#bfeaff');
+      g.addColorStop(1, 'rgba(120,200,255,0)');
       ctx.fillStyle = g;
       ctx.beginPath(); ctx.arc(f.x, f.y, f.r, 0, TAU); ctx.fill();
       ctx.globalAlpha = 1;
@@ -4272,7 +4548,10 @@
                     swing, hurtEnemy, castSpell, castSpecial,
                     pressSpell, pressSpecial, readPad, PAD, padEdge,
                     gods: GODS, slots: SLOTS, shopItems: SHOP_ITEMS, offerCount: OFFER_COUNT,
-                    bindPower, offerSlots, openShop, closeShop, openPause, closePause,
+                    rarity: RARITY, rarityOrder: RARITY_ORDER, rollRarity, rollRaritySet,
+                    bindPower, offerSlots, openReward, openCorridor, spawnBoss,
+                    shopVisible: () => !document.getElementById('shop').hidden,
+                    openShop, closeShop, openPause, closePause,
                     // One simulation step, gated the same way the frame loop is, so
                     // a headless check can advance the room without touching a clock.
                     tick: (dt) => { if (mode === 'playing') update(dt); } };

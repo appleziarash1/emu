@@ -28,25 +28,26 @@ def check(label, ok, detail=""):
 
 
 # ---------------------------------------------------------------- source audit
-# The three combat regions a slot's flags may be read in. Attack flags are read
-# by swing and its strike-effect helper, special flags by the chakram, spell
-# flags by the burst. The special chakram update is not contiguous with
-# castSpecial, so its flags are audited by the game-side checks below.
+# The combat regions a slot's flags may be read in. Attack flags are read by
+# swing and its strike-effect helper, dash flags by the dash sweep, spell flags
+# by the burst, special flags by the chakram (whose update is not contiguous
+# with castSpecial, so its flags are audited by the game-side checks below).
 SRC = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html"),
            encoding="utf-8").read()
 GODS_START = SRC.index("const GODS")
 GODS_END = SRC.index("const SHOP_ITEMS", GODS_START)
 REGIONS = {
-    "attack": (SRC.index("function swing"), SRC.index("function castSpell")),
-    "special": (SRC.index("function castSpecial"), SRC.index("function castSpell")),
+    "attack": (SRC.index("function swing"), SRC.index("function applyDashEffects")),
+    "dash": (SRC.index("function applyDashEffects"), SRC.index("function castSpell")),
     "spell": (SRC.index("function castSpell"), SRC.index("function castSpecial")),
+    "special": (SRC.index("function castSpecial"), len(SRC)),
 }
 godBlock = SRC[GODS_START:GODS_END]
 # Each `flags: {...}` belongs to the variant whose header (`attack: {`) is the
 # nearest one before it, since variants are always written in slot order.
 slotSites = []
 for m in re.finditer(r"flags:\s*\{([^}]*)\}", godBlock):
-    head = re.findall(r"\b(attack|special|spell):\s*\{", godBlock[:m.start()])
+    head = re.findall(r"\b(attack|special|spell|dash):\s*\{", godBlock[:m.start()])
     if head:
         slotSites.append((head[-1], m.group(1)))
 silent = []
@@ -111,34 +112,43 @@ with sync_playwright() as pw:
     page.wait_for_function("() => window.__game && window.__game.state")
     page.wait_for_timeout(400)
 
-    # --- the roster is complete: every god has all three slots, and the shop
+    # --- the roster is complete: every god has every slot, and the shop
     # carries every god
     roster = page.evaluate("""() => {
       const gods = window.__game.gods;
       const items = window.__game.shopItems;
+      const slots = window.__game.slots.map((s) => s.id);
       return {
         count: gods.length,
+        slots,
         ids: gods.map((g) => g.id),
         names: gods.map((g) => g.god),
-        complete: gods.every((g) => g.variants.attack && g.variants.special && g.variants.spell),
-        named: gods.every((g) => ['attack', 'special', 'spell'].every(
+        complete: gods.every((g) => g.variants.attack && g.variants.special &&
+                                    g.variants.spell && g.variants.dash),
+        named: gods.every((g) => ['attack', 'special', 'spell', 'dash'].every(
           (s) => g.variants[s].name && g.variants[s].desc && typeof g.variants[s].apply === 'function')),
         shopCount: items.length,
         prices: items.map((i) => i.price),
+        offerCount: window.__game.offerCount,
         // Hades-like roster: these are the gods the shop must show.
         expected: ['zeus', 'athena', 'poseidon', 'ares', 'artemis', 'aphrodite',
                    'demeter', 'hermes', 'dionysus', 'hephaestus', 'chaos']
                        .every((id) => gods.some((g) => g.id === id)),
-        recommended: gods.every((g) => ['attack', 'special', 'spell']
-                       .some((s) => g.variants[s].rec)),
+        recommended: gods.every((g) => ['attack', 'special', 'spell', 'dash']
+                       .every((s) => !!window.__game.rarity[g.variants[s].rarity])),
       };
     }""")
-    check("every god has an attack, special and spell variant", roster["complete"], roster["names"])
+    check("every god has a variant for every move slot", roster["complete"], roster["names"])
+    check("the dash is a bindable move slot", "dash" in roster["slots"], roster["slots"])
     check("every variant is named and described", roster["named"], roster["count"])
     check("the shop lists every god", roster["shopCount"] == roster["count"], roster["shopCount"])
     check("the shop prices every god", all(p > 0 for p in roster["prices"]), roster["prices"])
     check("the pantheon is the one Hades players expect", roster["expected"], roster["ids"])
     check("every god suggests at least one slot", roster["recommended"], roster["ids"])
+    # A cleared chamber should offer a real spread, not a fixed pair.
+    check("a cleared chamber offers a fistful of gods, not a pair",
+          roster["offerCount"] >= 4 and roster["offerCount"] < roster["count"],
+          roster["offerCount"])
 
     # --- a power bound to Strike only changes Strike. Bind an Ares damage power
     # to the attack slot and drive a real swing at a real foe.
@@ -198,6 +208,104 @@ with sync_playwright() as pw:
     check("Zeus on Strike chains to a neighbour", chain["struck"] > 0 and chain["beside"] > 0, chain)
     check("the chain flag stays out of the other slots",
           chain["hasAttack"] and not chain["hasSpecial"], chain)
+
+    # --- the chain has to read as a real boon, not a sliver: the splash should
+    # carry most of the blow, so a neighbour takes damage comparable to the foe
+    # that was actually struck.
+    chainWeight = page.evaluate("""() => {
+      const g = window.__game, s = g.state, r = g.room, p = s.player;
+      g.bindPower('zeus', 'attack');
+      r.enemies.length = 0;
+      const a = { kind: 'shade', x: p.x + 40, y: p.y, r: 14, hp: 5000, max: 5000,
+                  speed: 0, dmg: 0, color: '#fff', atk: 0 };
+      const b = { kind: 'shade', x: p.x + 90, y: p.y, r: 14, hp: 5000, max: 5000,
+                  speed: 0, dmg: 0, color: '#fff', atk: 0 };
+      r.enemies.push(a, b);
+      p.hx = 1; p.hy = 0; s.swingCd = 0;
+      g.swing();
+      const struck = 5000 - a.hp, beside = 5000 - b.hp;
+      return { struck, beside, ratio: beside / (struck || 1) };
+    }""")
+    check("the chain splash carries most of the blow to the neighbour",
+          chainWeight["ratio"] >= 0.6, chainWeight)
+
+    # --- the chain splash must not have infinite reach: a foe on the far side of
+    # the room is untouched, so the boon stays a pack-clearer and not a room-wipe.
+    chainReach = page.evaluate("""() => {
+      const g = window.__game, s = g.state, r = g.room, p = s.player;
+      g.bindPower('zeus', 'attack');
+      r.enemies.length = 0;
+      const a = { kind: 'shade', x: p.x + 40, y: p.y, r: 14, hp: 5000, max: 5000,
+                  speed: 0, dmg: 0, color: '#fff', atk: 0 };
+      const far = { kind: 'shade', x: p.x + 600, y: p.y + 400, r: 14, hp: 5000, max: 5000,
+                    speed: 0, dmg: 0, color: '#fff', atk: 0 };
+      r.enemies.push(a, far);
+      p.hx = 1; p.hy = 0; s.swingCd = 0;
+      g.swing();
+      return { struck: 5000 - a.hp, far: 5000 - far.hp };
+    }""")
+    check("the chain stops at its range instead of clearing the room",
+          chainReach["struck"] > 0 and chainReach["far"] == 0, chainReach)
+
+    # --- the dash slot: a god bound there must do something to the foes the hero
+    # runs through, and nothing at all when bound elsewhere.
+    dash = page.evaluate("""() => {
+      const g = window.__game, s = g.state, r = g.room, p = s.player;
+      r.enemies.length = 0;
+      // Clear the other slots so a leftover power cannot be mistaken for a dash.
+      g.bindPower('hermes', 'attack');
+      g.bindPower('hermes', 'special');
+      g.bindPower('hermes', 'spell');
+      g.bindPower('ares', 'dash');
+      const foe = { kind: 'brute', x: p.x + 30, y: p.y, r: 22, hp: 90000, max: 90000,
+                    speed: 0, dmg: 0, color: '#fff', atk: 0 };
+      r.enemies.push(foe);
+      p.faceX = 1; p.faceY = 0;
+      s.dashCd = 0; s.player.kx = 640; s.player.ky = 0;
+      s.dashT = 0.16; s.dashHits = [];
+      for (let i = 0; i < 12; i++) g.tick(1 / 60);
+      return { hp: foe.hp, seDash: JSON.parse(JSON.stringify(s.se.dash)),
+               seAttack: JSON.parse(JSON.stringify(s.se.attack)),
+               slot: s.slots.dash && s.slots.dash.god };
+    }""")
+    check("a god bound to the dash empowers the dash through a foe",
+          dash["hp"] < 90000 and dash["slot"] == "Ares", dash)
+    check("the dash power lives only in the dash slot",
+          dash["seDash"].get("dashRend") and not dash["seAttack"].get("dashRend"), dash)
+
+    # --- dash damage is once per foe per dash, not once per frame: a foe cannot
+    # be shredded by a single dash that keeps overlapping it.
+    dashOnce = page.evaluate("""() => {
+      const g = window.__game, s = g.state, r = g.room, p = s.player;
+      r.enemies.length = 0;
+      g.bindPower('ares', 'dash');
+      const foe = { kind: 'brute', x: p.x, y: p.y, r: 22, hp: 90000, max: 90000,
+                    speed: 0, dmg: 0, color: '#fff', atk: 0 };
+      r.enemies.push(foe);
+      s.player.kx = 0; s.player.ky = 0;
+      s.dashT = 0.16; s.dashHits = [];
+      for (let i = 0; i < 8; i++) g.tick(1 / 60);
+      return { dealt: 90000 - foe.hp, expected: s.dmg * 1.6 };
+    }""")
+    check("one dash damages a foe once, not once per frame",
+          dashOnce["dealt"] <= dashOnce["expected"] * 1.01, dashOnce)
+
+    # --- Hermes on Dash is a pure movement power: it must change the dash's
+    # distance and cooldown without leaving a combat flag behind.
+    dashMove = page.evaluate("""() => {
+      const g = window.__game, s = g.state;
+      const before = { pow: s.dashPow, cd: s.dashCdMax };
+      g.bindPower('hermes', 'dash');
+      return { before, after: { pow: s.dashPow, cd: s.dashCdMax },
+               se: JSON.parse(JSON.stringify(s.se.dash)),
+               slot: s.slots.dash && s.slots.dash.name };
+    }""")
+    check("Hermes on Dash lengthens the dash and shortens its cooldown",
+          dashMove["after"]["pow"] > dashMove["before"]["pow"] and
+          dashMove["after"]["cd"] < dashMove["before"]["cd"] and
+          dashMove["slot"] == "Hyper Dash", dashMove)
+    check("a movement-only dash power leaves no combat flag",
+          not any(k.startswith("dash") for k in dashMove["se"]), dashMove["se"])
 
     # --- Demeter on Special chills what the blade cuts, in the special slot only.
     # The thrown blade is walked all the way out and back, which is the only way
@@ -309,13 +417,14 @@ with sync_playwright() as pw:
       return { shown, readout, price, obols: s.obols, mode: g.mode,
                pending: s.pendingPower,
                slots: document.querySelectorAll('#slotsBody .slot').length,
+               wanted: window.__game.slots.length,
                shopHidden: document.getElementById('shop').hidden };
     }""")
     check("the market shows every god", market["shown"] == roster["count"], market["shown"])
     check("the market shows the purse", "500" in market["readout"], market["readout"])
     check("buying a god debits its price", market["obols"] == 500 - market["price"], market)
-    check("buying a god opens the slot chooser",
-          market["mode"] == "slot" and market["slots"] == 3 and
+    check("buying a god opens the slot chooser, one card per move",
+          market["mode"] == "slot" and market["slots"] == market["wanted"] and
           market["shopHidden"] and market["pending"] is not None, market)
 
     # --- a purse too thin to buy: the click must be refused, not go negative
